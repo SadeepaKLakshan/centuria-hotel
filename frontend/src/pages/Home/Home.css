@@ -1,0 +1,44 @@
+.home-page {
+    position: relative;
+
+    width: 100%;
+    min-height: 100vh;
+
+    overflow-x: hidden;
+
+    background: #ffffff;
+}
+
+.home-content {
+    position: relative;
+
+    width: 100%;
+    min-height: 100vh;
+}
+
+.home-content section {
+    width: 100%;
+}
+
+#about {
+    scroll-margin-top: 125px;
+}
+
+#foods {
+    scroll-margin-top: 125px;
+}
+
+html {
+    scroll-behavior: smooth;
+}
+
+body {
+    overflow-x: hidden;
+}
+
+@media (max-width: 700px) {
+    #about,
+    #foods {
+        scroll-margin-top: 110px;
+    }
+}

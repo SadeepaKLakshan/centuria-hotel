@@ -1,0 +1,21 @@
+.register-page {
+    min-height: 100vh;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: var(--light-gradient);
+}
+
+.register-preview {
+    width: min(450px, 90%);
+    padding: 45px;
+    text-align: center;
+    border-radius: 24px;
+    background: white;
+    box-shadow: var(--shadow);
+}
+
+.register-preview h1 {
+    font-family: "Playfair Display", serif;
+    color: var(--dark);
+}

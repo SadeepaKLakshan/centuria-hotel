@@ -1,0 +1,750 @@
+.qs-section {
+    position: relative;
+    z-index: 30;
+
+    width: 100%;
+
+    padding: 0 4% 30px;
+
+    margin-top: 0;
+
+    background: transparent;
+}
+
+.qs-container {
+    width: 100%;
+    max-width: 1600px;
+
+    margin: 0 auto;
+
+    display: grid;
+
+    grid-template-columns:
+        repeat(
+            4,
+            minmax(0, 1fr)
+        );
+
+    gap: 14px;
+}
+
+.qs-card {
+    position: relative;
+
+    isolation: isolate;
+
+    width: 100%;
+    min-width: 0;
+    min-height: 145px;
+
+    display: grid;
+
+    grid-template-columns:
+        74px
+        minmax(0, 1fr);
+
+    align-items: center;
+
+    gap: 19px;
+
+    padding: 23px 24px;
+
+    overflow: hidden;
+
+    border: 1px solid #e6e9ed;
+
+    border-radius: 24px;
+
+    outline: none;
+
+    background: #ffffff;
+
+    color: #171c24;
+
+    text-align: left;
+
+    cursor: pointer;
+
+    appearance: none;
+    -webkit-appearance: none;
+
+    box-shadow:
+        0 10px 28px rgba(20, 27, 38, 0.055),
+        0 2px 7px rgba(20, 27, 38, 0.025);
+
+    transform: translateY(0);
+
+    transition:
+        transform 0.32s
+            cubic-bezier(
+                0.2,
+                0.8,
+                0.2,
+                1
+            ),
+        box-shadow 0.32s ease,
+        border-color 0.32s ease;
+}
+
+.qs-card:hover {
+    z-index: 10;
+
+    transform:
+        translateY(-8px)
+        scale(1.012);
+
+    border-color:
+        rgba(
+            255,
+            103,
+            0,
+            0.68
+        );
+
+    background: #ffffff;
+
+    box-shadow:
+        0 24px 48px
+            rgba(
+                18,
+                24,
+                34,
+                0.13
+            ),
+        0 10px 24px
+            rgba(
+                255,
+                101,
+                0,
+                0.1
+            ),
+        0 0 0 1px
+            rgba(
+                255,
+                120,
+                0,
+                0.05
+            );
+}
+
+.qs-card:active {
+    transform:
+        translateY(-3px)
+        scale(0.995);
+}
+
+.qs-card:focus-visible {
+    border-color: #ff6500;
+
+    box-shadow:
+        0 0 0 4px
+            rgba(
+                255,
+                101,
+                0,
+                0.12
+            ),
+        0 18px 40px
+            rgba(
+                20,
+                27,
+                38,
+                0.1
+            );
+}
+
+/* Animated orange rounded outline */
+
+.qs-hover-border {
+    position: absolute;
+
+    inset: 0;
+
+    z-index: 8;
+
+    border: 2px solid transparent;
+
+    border-radius: 24px;
+
+    pointer-events: none;
+
+    opacity: 0;
+
+    background:
+        linear-gradient(
+            #ffffff,
+            #ffffff
+        )
+        padding-box,
+        linear-gradient(
+            115deg,
+            #ff4b00,
+            #ff8100,
+            #ffb000,
+            #ff6500
+        )
+        border-box;
+
+    transition:
+        opacity 0.3s ease;
+}
+
+.qs-card:hover
+.qs-hover-border {
+    opacity: 1;
+}
+
+/* Icon */
+
+.qs-icon {
+    position: relative;
+
+    z-index: 10;
+
+    width: 66px;
+    height: 66px;
+
+    min-width: 66px;
+
+    display: flex;
+
+    align-items: center;
+
+    justify-content: center;
+
+    overflow: hidden;
+
+    border: 1px solid
+        rgba(
+            255,
+            255,
+            255,
+            0.3
+        );
+
+    border-radius: 22px;
+
+    color: #ffffff;
+
+    box-shadow:
+        0 12px 27px
+            rgba(
+                255,
+                95,
+                0,
+                0.18
+            ),
+        inset 0 1px 0
+            rgba(
+                255,
+                255,
+                255,
+                0.36
+            );
+
+    transform: translateY(0);
+
+    transition:
+        transform 0.3s ease,
+        border-radius 0.3s ease,
+        box-shadow 0.3s ease;
+}
+
+.qs-card:hover
+.qs-icon {
+    transform:
+        translateY(-3px)
+        scale(1.05);
+
+    border-radius: 20px;
+
+    box-shadow:
+        0 17px 34px
+            rgba(
+                255,
+                95,
+                0,
+                0.25
+            ),
+        inset 0 1px 0
+            rgba(
+                255,
+                255,
+                255,
+                0.4
+            );
+}
+
+.qs-icon svg {
+    position: relative;
+
+    z-index: 3;
+}
+
+.qs-icon-rooms {
+    background:
+        linear-gradient(
+            145deg,
+            #ff351b 0%,
+            #ff5900 55%,
+            #ff7300 100%
+        );
+}
+
+.qs-icon-foods {
+    background:
+        linear-gradient(
+            145deg,
+            #ff7300 0%,
+            #ff9800 55%,
+            #ffb000 100%
+        );
+}
+
+.qs-icon-tours {
+    background:
+        linear-gradient(
+            145deg,
+            #ff3818 0%,
+            #ff5700 55%,
+            #ff7500 100%
+        );
+}
+
+.qs-icon-booking {
+    background:
+        linear-gradient(
+            145deg,
+            #ff7400 0%,
+            #ff9500 55%,
+            #ffad00 100%
+        );
+}
+
+.qs-icon-shine {
+    position: absolute;
+
+    top: -15px;
+    left: -10px;
+
+    width: 55px;
+    height: 34px;
+
+    border-radius: 50%;
+
+    background:
+        rgba(
+            255,
+            255,
+            255,
+            0.23
+        );
+
+    filter: blur(8px);
+
+    transform:
+        rotate(-20deg);
+
+    pointer-events: none;
+}
+
+/* Text */
+
+.qs-content {
+    position: relative;
+
+    z-index: 10;
+
+    min-width: 0;
+
+    display: flex;
+
+    flex-direction: column;
+
+    align-items: flex-start;
+}
+
+.qs-title {
+    margin: 0;
+
+    color: #171c24;
+
+    font-size: 17px;
+
+    font-weight: 850;
+
+    line-height: 1.15;
+
+    letter-spacing: -0.3px;
+}
+
+.qs-subtitle {
+    margin-top: 4px;
+
+    color: #59616d;
+
+    font-size: 11px;
+
+    font-weight: 650;
+
+    line-height: 1.3;
+}
+
+.qs-description {
+    display: block;
+
+    margin-top: 5px;
+
+    color: #9aa1ab;
+
+    font-size: 9px;
+
+    font-weight: 500;
+
+    line-height: 1.45;
+}
+
+.qs-action {
+    display: inline-flex;
+
+    align-items: center;
+
+    gap: 6px;
+
+    margin-top: 10px;
+
+    color: #ff5b00;
+
+    font-size: 10.5px;
+
+    font-weight: 850;
+
+    line-height: 1;
+
+    transition:
+        gap 0.25s ease,
+        color 0.25s ease,
+        transform 0.25s ease;
+}
+
+.qs-action-arrow {
+    transition:
+        transform 0.25s ease;
+}
+
+.qs-card:hover
+.qs-action {
+    gap: 10px;
+
+    color: #e94e00;
+}
+
+.qs-card:hover
+.qs-action-arrow {
+    transform:
+        translateX(3px);
+}
+
+/* Decorative lower right circle */
+
+.qs-corner-decoration {
+    position: absolute;
+
+    z-index: 2;
+
+    right: -43px;
+    bottom: -50px;
+
+    width: 115px;
+    height: 115px;
+
+    border-radius: 50%;
+
+    background:
+        radial-gradient(
+            circle at 30% 30%,
+            rgba(
+                255,
+                151,
+                76,
+                0.13
+            ),
+            rgba(
+                255,
+                101,
+                0,
+                0.055
+            )
+            54%,
+            transparent
+            72%
+        );
+
+    transform: scale(1);
+
+    pointer-events: none;
+
+    transition:
+        transform 0.35s ease,
+        opacity 0.35s ease;
+}
+
+.qs-card:hover
+.qs-corner-decoration {
+    transform:
+        scale(1.32);
+
+    opacity: 0.9;
+}
+
+/* Soft shine at top */
+
+.qs-top-light {
+    position: absolute;
+
+    z-index: 1;
+
+    top: 0;
+    left: 12%;
+
+    width: 76%;
+    height: 1px;
+
+    opacity: 0.8;
+
+    background:
+        linear-gradient(
+            90deg,
+            transparent,
+            rgba(
+                255,
+                129,
+                39,
+                0.28
+            ),
+            transparent
+        );
+
+    pointer-events: none;
+}
+
+/* Keep all four cards permanently white */
+
+.qs-card,
+.qs-card:nth-child(1),
+.qs-card:nth-child(2),
+.qs-card:nth-child(3),
+.qs-card:nth-child(4) {
+    background-color:
+        #ffffff !important;
+}
+
+.qs-card:hover,
+.qs-card:nth-child(1):hover,
+.qs-card:nth-child(2):hover,
+.qs-card:nth-child(3):hover,
+.qs-card:nth-child(4):hover {
+    background-color:
+        #ffffff !important;
+}
+
+/* Prevent other project CSS from changing card corners */
+
+.qs-section
+.qs-card {
+    border-radius:
+        24px !important;
+}
+
+.qs-section
+.qs-card:hover {
+    border-radius:
+        24px !important;
+}
+
+.qs-section
+.qs-hover-border {
+    border-radius:
+        24px !important;
+}
+
+/* Large screens */
+
+@media (
+    min-width: 1600px
+) {
+    .qs-container {
+        max-width: 1650px;
+    }
+
+    .qs-card {
+        min-height: 150px;
+
+        padding:
+            25px
+            28px;
+    }
+}
+
+/* Laptop */
+
+@media (
+    max-width: 1250px
+) {
+    .qs-section {
+        padding-left: 3%;
+        padding-right: 3%;
+    }
+
+    .qs-container {
+        gap: 11px;
+    }
+
+    .qs-card {
+        grid-template-columns:
+            60px
+            minmax(0, 1fr);
+
+        gap: 14px;
+
+        min-height: 132px;
+
+        padding:
+            20px
+            17px;
+
+        border-radius:
+            21px !important;
+    }
+
+    .qs-hover-border {
+        border-radius:
+            21px !important;
+    }
+
+    .qs-section
+    .qs-card:hover {
+        border-radius:
+            21px !important;
+    }
+
+    .qs-icon {
+        width: 58px;
+        height: 58px;
+
+        min-width: 58px;
+
+        border-radius: 19px;
+    }
+
+    .qs-title {
+        font-size: 14px;
+    }
+
+    .qs-subtitle {
+        font-size: 9.5px;
+    }
+
+    .qs-description {
+        font-size: 8px;
+    }
+
+    .qs-action {
+        font-size: 9px;
+    }
+}
+
+/* Tablet */
+
+@media (
+    max-width: 950px
+) {
+    .qs-container {
+        grid-template-columns:
+            repeat(
+                2,
+                minmax(
+                    0,
+                    1fr
+                )
+            );
+    }
+
+    .qs-card {
+        min-height: 125px;
+    }
+}
+
+/* Mobile */
+
+@media (
+    max-width: 620px
+) {
+    .qs-section {
+        padding:
+            0
+            14px
+            22px;
+    }
+
+    .qs-container {
+        grid-template-columns:
+            1fr;
+
+        gap: 11px;
+    }
+
+    .qs-card {
+        min-height: 110px;
+
+        grid-template-columns:
+            56px
+            minmax(0, 1fr);
+
+        gap: 13px;
+
+        padding:
+            17px;
+
+        border-radius:
+            19px !important;
+    }
+
+    .qs-hover-border {
+        border-radius:
+            19px !important;
+    }
+
+    .qs-section
+    .qs-card:hover {
+        border-radius:
+            19px !important;
+    }
+
+    .qs-icon {
+        width: 54px;
+        height: 54px;
+
+        min-width: 54px;
+
+        border-radius: 17px;
+    }
+
+    .qs-card:hover {
+        transform:
+            translateY(-4px)
+            scale(1.005);
+    }
+
+    .qs-title {
+        font-size: 14px;
+    }
+
+    .qs-description {
+        margin-top: 3px;
+    }
+
+    .qs-action {
+        margin-top: 7px;
+    }
+}

@@ -1,0 +1,8 @@
+{
+    "name": "centuria/hotel-backend",
+    "description": "Centuria Lake Resort PHP Backend",
+    "type": "project",
+    "require": {
+        "phpmailer/phpmailer": "^6.10"
+    }
+}

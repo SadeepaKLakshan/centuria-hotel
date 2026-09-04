@@ -1,0 +1,102 @@
+@import url("https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=Playfair+Display:wght@400;500;600;700;800&display=swap");
+
+:root {
+    --primary-orange: #ff5a00;
+    --deep-orange: #e84200;
+    --light-orange: #ff8a00;
+
+    --primary-yellow: #ffc400;
+    --gold: #e2a500;
+
+    --white: #ffffff;
+    --cream: #fffaf0;
+
+    --dark: #14213d;
+    --dark-soft: #1f2a45;
+
+    --text: #30384a;
+    --muted: #737b8c;
+
+    --primary-gradient:
+        linear-gradient(
+            135deg,
+            #ff3d00 0%,
+            #ff7400 48%,
+            #ffc400 100%
+        );
+
+    --light-gradient:
+        linear-gradient(
+            135deg,
+            #ffffff 0%,
+            #fff9e8 50%,
+            #ffedc2 100%
+        );
+
+    --shadow:
+        0 18px 50px rgba(25, 33, 50, 0.1);
+
+    --orange-shadow:
+        0 16px 40px rgba(255, 91, 0, 0.25);
+}
+
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+}
+
+html {
+    scroll-behavior: smooth;
+}
+
+body {
+    min-width: 320px;
+    min-height: 100vh;
+    font-family: "Inter", sans-serif;
+    background: #ffffff;
+    color: var(--text);
+    overflow-x: hidden;
+}
+
+button,
+input,
+textarea,
+select {
+    font: inherit;
+}
+
+button {
+    cursor: pointer;
+}
+
+a {
+    text-decoration: none;
+    color: inherit;
+}
+
+img {
+    display: block;
+    max-width: 100%;
+}
+
+::selection {
+    background: var(--primary-orange);
+    color: white;
+}
+
+::-webkit-scrollbar {
+    width: 8px;
+}
+
+::-webkit-scrollbar-track {
+    background: #fff5e5;
+}
+
+::-webkit-scrollbar-thumb {
+    background: linear-gradient(
+        var(--primary-orange),
+        var(--primary-yellow)
+    );
+    border-radius: 20px;
+}

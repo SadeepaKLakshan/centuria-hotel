@@ -1,0 +1,21 @@
+.simple-page {
+    min-height: 100vh;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    background: var(--light-gradient);
+}
+
+.simple-card {
+    width: min(450px, 90%);
+    padding: 45px;
+    text-align: center;
+    border-radius: 24px;
+    background: white;
+    box-shadow: var(--shadow);
+}
+
+.simple-card h1 {
+    font-family: "Playfair Display", serif;
+    color: var(--dark);
+}
