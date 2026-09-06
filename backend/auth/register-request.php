@@ -6,7 +6,8 @@ header('Content-Type: application/json; charset=utf-8');
 
 $allowedOrigins = [
     'http://localhost:5173',
-    'https://fanciful-dieffenbachia-547197.netlify.app'
+    'https://fanciful-dieffenbachia-547197.netlify.app',
+    'https://subtle-dolphin-0f6b7f.netlify.app'
 ];
 
 $origin = $_SERVER['HTTP_ORIGIN'] ?? '';
@@ -220,11 +221,10 @@ try {
         PASSWORD_DEFAULT
     );
 
-    $expirySeconds =
-        (int)(
-            $config['app']['otp_expiry_seconds']
-            ?? 120
-        );
+    $expirySeconds = (int)(
+        $config['app']['otp_expiry_seconds']
+        ?? 120
+    );
 
     $expiresAt = (
         new DateTimeImmutable()
