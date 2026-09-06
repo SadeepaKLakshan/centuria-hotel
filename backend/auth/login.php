@@ -4,28 +4,10 @@ declare(strict_types=1);
 
 header('Content-Type: application/json; charset=utf-8');
 
-$allowedOrigins = [
-    'http://localhost:5173',
-    'https://fanciful-dieffenbachia-547197.netlify.app',
-    'https://subtle-dolphin-0f6b7f.netlify.app'
-];
-
-$origin = $_SERVER['HTTP_ORIGIN'] ?? '';
-
-if (in_array($origin, $allowedOrigins, true)) {
-    header('Access-Control-Allow-Origin: ' . $origin);
-}
-
-header('Vary: Origin');
-header('Access-Control-Allow-Headers: Content-Type');
-header('Access-Control-Allow-Methods: POST, OPTIONS');
-
-if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
-    http_response_code(204);
-    exit;
-}
-
+require_once __DIR__ . '/../config/cors.php';
 require_once __DIR__ . '/../config/database.php';
+
+applyCors();
 
 function respond(
     bool $success,
@@ -46,6 +28,11 @@ function respond(
         JSON_UNESCAPED_SLASHES
     );
 
+    exit;
+}
+
+if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
+    http_response_code(204);
     exit;
 }
 
@@ -74,12 +61,21 @@ try {
     }
 
     $email = strtolower(
-        trim((string)($input['email'] ?? ''))
+        trim(
+            (string) ($input['email'] ?? '')
+        )
     );
 
-    $password = (string)($input['password'] ?? '');
+    $password = (string) (
+        $input['password'] ?? ''
+    );
 
-    if (!filter_var($email, FILTER_VALIDATE_EMAIL)) {
+    if (
+        !filter_var(
+            $email,
+            FILTER_VALIDATE_EMAIL
+        )
+    ) {
         respond(
             false,
             'Please enter a valid email address.',
@@ -121,43 +117,43 @@ try {
 
     $user = $statement->fetch();
 
-    if (!$user) {
-        respond(
-            false,
-            'Incorrect email or password.',
-            [],
-            401
-        );
-    }
+    if (
+        !$user ||
+        !password_verify(
+            $password,
+            $user['password_hash']
+        )
+    ) {
+        if ($user) {
+            try {
+                $log = $pdo->prepare(
+                    'INSERT INTO login_logs
+                    (
+                        user_id,
+                        email,
+                        status,
+                        ip_address,
+                        created_at
+                    )
+                    VALUES
+                    (
+                        :user_id,
+                        :email,
+                        :status,
+                        :ip_address,
+                        NOW()
+                    )'
+                );
 
-    if (!password_verify($password, $user['password_hash'])) {
-        try {
-            $log = $pdo->prepare(
-                'INSERT INTO login_logs
-                (
-                    user_id,
-                    email,
-                    status,
-                    ip_address,
-                    created_at
-                )
-                VALUES
-                (
-                    :user_id,
-                    :email,
-                    :status,
-                    :ip_address,
-                    NOW()
-                )'
-            );
-
-            $log->execute([
-                'user_id' => $user['id'],
-                'email' => $user['email'],
-                'status' => 'failed',
-                'ip_address' => $_SERVER['REMOTE_ADDR'] ?? null
-            ]);
-        } catch (Throwable $ignored) {
+                $log->execute([
+                    'user_id' => $user['id'],
+                    'email' => $email,
+                    'status' => 'failed',
+                    'ip_address' =>
+                        $_SERVER['REMOTE_ADDR'] ?? null
+                ]);
+            } catch (Throwable $ignored) {
+            }
         }
 
         respond(
@@ -168,7 +164,7 @@ try {
         );
     }
 
-    if ((int)$user['is_verified'] !== 1) {
+    if ((int) $user['is_verified'] !== 1) {
         respond(
             false,
             'Please verify your email before logging in.',
@@ -185,6 +181,84 @@ try {
             403
         );
     }
+
+    $role = strtolower(
+        (string) $user['role']
+    );
+
+    $allowedRoles = [
+        'customer',
+        'staff',
+        'manager',
+        'admin'
+    ];
+
+    if (
+        !in_array(
+            $role,
+            $allowedRoles,
+            true
+        )
+    ) {
+        respond(
+            false,
+            'Invalid account role.',
+            [],
+            403
+        );
+    }
+
+    $token = bin2hex(
+        random_bytes(32)
+    );
+
+    $tokenHash = hash(
+        'sha256',
+        $token
+    );
+
+    $expiresAt = (
+        new DateTimeImmutable()
+    )
+        ->modify('+7 days')
+        ->format('Y-m-d H:i:s');
+
+    $pdo->beginTransaction();
+
+    $deleteExpiredTokens = $pdo->prepare(
+        'DELETE FROM api_tokens
+         WHERE user_id = :user_id
+           AND expires_at < NOW()'
+    );
+
+    $deleteExpiredTokens->execute([
+        'user_id' => $user['id']
+    ]);
+
+    $insertToken = $pdo->prepare(
+        'INSERT INTO api_tokens
+        (
+            user_id,
+            token_hash,
+            expires_at,
+            created_at,
+            last_used_at
+        )
+        VALUES
+        (
+            :user_id,
+            :token_hash,
+            :expires_at,
+            NOW(),
+            NOW()
+        )'
+    );
+
+    $insertToken->execute([
+        'user_id' => $user['id'],
+        'token_hash' => $tokenHash,
+        'expires_at' => $expiresAt
+    ]);
 
     $updateLogin = $pdo->prepare(
         'UPDATE users
@@ -220,36 +294,62 @@ try {
             'user_id' => $user['id'],
             'email' => $user['email'],
             'status' => 'success',
-            'ip_address' => $_SERVER['REMOTE_ADDR'] ?? null
+            'ip_address' =>
+                $_SERVER['REMOTE_ADDR'] ?? null
         ]);
     } catch (Throwable $ignored) {
     }
 
-    $role = strtolower((string)$user['role']);
+    $pdo->commit();
 
     $redirect = match ($role) {
-        'admin' => '/admin-dashboard',
-        'manager' => '/manager-dashboard',
-        'staff' => '/staff-dashboard',
-        default => '/customer-dashboard'
+        'admin' =>
+            '/admin-dashboard',
+
+        'manager' =>
+            '/manager-dashboard',
+
+        'staff' =>
+            '/staff-dashboard',
+
+        default =>
+            '/customer-dashboard'
     };
 
     respond(
         true,
         'Login successful.',
         [
+            'token' => $token,
+            'token_type' => 'Bearer',
+            'expires_at' => $expiresAt,
+
             'user' => [
-                'id' => (int)$user['id'],
-                'full_name' => $user['full_name'],
-                'email' => $user['email'],
-                'country' => $user['country'],
-                'role' => $role,
-                'profile_image' => $user['profile_image']
+                'id' => (int) $user['id'],
+                'full_name' =>
+                    $user['full_name'],
+                'email' =>
+                    $user['email'],
+                'country' =>
+                    $user['country'],
+                'role' =>
+                    $role,
+                'profile_image' =>
+                    $user['profile_image']
             ],
+
             'redirect' => $redirect
         ]
     );
 } catch (Throwable $e) {
+    if (
+        isset($pdo) &&
+        $pdo instanceof PDO &&
+        $pdo->inTransaction()
+    ) {
+        $pdo->rollBack();
+    }
+
     error_log(
         'Login error: ' .
         $e->getMessage()
