@@ -10,18 +10,40 @@ return [
     ],
 
     'smtp' => [
-        'host' => 'smtp.gmail.com',
-        'port' => 587,
-        'username' => 'centuriahotelsl@gmail.com',
-        'password' => 'ysjt geyq mowr kbup',
-        'encryption' => 'tls',
-        'from_email' => 'centuriahotelsl@gmail.com',
-        'from_name' => 'Centuria Lake Resort'
+        'host' =>
+            getenv('SMTP_HOST') ?: 'smtp.gmail.com',
+
+        'port' =>
+            (int)(getenv('SMTP_PORT') ?: 587),
+
+        'username' =>
+            getenv('SMTP_USERNAME') ?: '',
+
+        'password' =>
+            getenv('SMTP_PASSWORD') ?: '',
+
+        'encryption' =>
+            'tls',
+
+        'from_email' =>
+            getenv('SMTP_FROM_EMAIL') ?: '',
+
+        'from_name' =>
+            getenv('SMTP_FROM_NAME')
+            ?: 'Centuria Lake Resort'
     ],
 
     'role_keywords' => [
-        'admin' => 'Admin123',
-        'manager' => 'Manager123',
-        'staff' => 'Staff123'
+        'admin' =>
+            getenv('ADMIN_KEYWORD')
+            ?: 'Admin123',
+
+        'manager' =>
+            getenv('MANAGER_KEYWORD')
+            ?: 'Manager123',
+
+        'staff' =>
+            getenv('STAFF_KEYWORD')
+            ?: 'Staff123'
     ]
 ];
