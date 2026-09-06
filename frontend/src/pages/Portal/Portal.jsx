@@ -529,6 +529,20 @@ function Portal() {
                 "true"
             );
 
+            if (result.token) {
+                localStorage.setItem(
+                    "centuria_token",
+                    result.token
+                );
+            }
+
+            if (result.expires_at) {
+                localStorage.setItem(
+                    "centuria_token_expires_at",
+                    result.expires_at
+                );
+            }
+
             showMessage(
                 "success",
                 "Login successful. Redirecting..."

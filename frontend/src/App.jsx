@@ -6,6 +6,9 @@ import Home from "./pages/Home/Home";
 import Portal from "./pages/Portal/Portal";
 import CustomerDashboard from "./pages/CustomerDashboard/CustomerDashboard";
 
+import AdminDashboard from "./pages/AdminDashboard/AdminDashboard";
+import AdminRoute from "./components/AdminRoute";
+
 function App() {
     return (
         <BrowserRouter>
@@ -39,6 +42,15 @@ function App() {
                     <Route
                         path="/customer-dashboard"
                         element={<CustomerDashboard />}
+                    />
+
+                    <Route
+                        path="/admin-dashboard"
+                        element={
+                            <AdminRoute>
+                                <AdminDashboard />
+                            </AdminRoute>
+                        }
                     />
                 </Routes>
             </div>
