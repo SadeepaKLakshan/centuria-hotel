@@ -155,7 +155,10 @@ try {
         );
     }
 
-    $otp = (string)random_int(100000, 999999);
+    $otp = (string) random_int(
+        100000,
+        999999
+    );
 
     $otpHash = password_hash(
         $otp,
@@ -235,8 +238,8 @@ try {
 
         $emailSent = $emailService->sendOtp(
             $email,
-            $fullName,
-            $otp
+            $otp,
+            'registration'
         );
     } catch (Throwable $emailError) {
         error_log(
