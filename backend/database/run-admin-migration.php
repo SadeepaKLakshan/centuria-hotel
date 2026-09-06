@@ -10,9 +10,7 @@ $providedKey = trim(
     (string)($_GET['key'] ?? '')
 );
 
-$expectedKey = getenv(
-    'MIGRATION_KEY'
-);
+$expectedKey = getenv('MIGRATION_KEY');
 
 if (
     $expectedKey === false ||
@@ -22,8 +20,7 @@ if (
 
     echo json_encode([
         'success' => false,
-        'message' =>
-            'MIGRATION_KEY is not configured.'
+        'message' => 'MIGRATION_KEY is not configured.'
     ]);
 
     exit;
@@ -40,31 +37,26 @@ if (
 
     echo json_encode([
         'success' => false,
-        'message' =>
-            'Invalid migration key.'
+        'message' => 'Invalid migration key.'
     ]);
 
     exit;
 }
 
-$sqlFile =
-    __DIR__ . '/admin_system.sql';
+$sqlFile = __DIR__ . '/admin_system.sql';
 
 if (!file_exists($sqlFile)) {
     http_response_code(404);
 
     echo json_encode([
         'success' => false,
-        'message' =>
-            'admin_system.sql was not found.'
+        'message' => 'admin_system.sql was not found.'
     ]);
 
     exit;
 }
 
-$sql = file_get_contents(
-    $sqlFile
-);
+$sql = file_get_contents($sqlFile);
 
 if (
     $sql === false ||
@@ -74,8 +66,7 @@ if (
 
     echo json_encode([
         'success' => false,
-        'message' =>
-            'Migration SQL is empty.'
+        'message' => 'Migration SQL is empty.'
     ]);
 
     exit;
@@ -98,17 +89,13 @@ try {
     $executed = 0;
 
     foreach ($statements as $statement) {
-        $statement = trim(
-            $statement
-        );
+        $statement = trim($statement);
 
         if ($statement === '') {
             continue;
         }
 
-        $pdo->exec(
-            $statement
-        );
+        $pdo->exec($statement);
 
         $executed++;
     }
@@ -118,8 +105,7 @@ try {
             'success' => true,
             'message' =>
                 'Admin system database migration completed successfully.',
-            'executed_statements' =>
-                $executed
+            'executed_statements' => $executed
         ],
         JSON_PRETTY_PRINT |
         JSON_UNESCAPED_SLASHES
@@ -137,8 +123,7 @@ try {
             'success' => false,
             'message' =>
                 'Database migration failed.',
-            'error' =>
-                $e->getMessage()
+            'error' => $e->getMessage()
         ],
         JSON_PRETTY_PRINT |
         JSON_UNESCAPED_SLASHES
