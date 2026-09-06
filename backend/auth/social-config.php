@@ -3,17 +3,25 @@
 declare(strict_types=1);
 
 return [
-    'frontend_url' => 'http://localhost:5173',
+    'frontend_url' =>
+        getenv('FRONTEND_URL')
+        ?: 'https://subtle-dolphin-0f6b7f.netlify.app',
 
     'google' => [
         'enabled' => true,
 
-        'client_id' => 'YOUR_GOOGLE_CLIENT_ID',
+        'client_id' =>
+            getenv('GOOGLE_SOCIAL_CLIENT_ID')
+            ?: getenv('GMAIL_CLIENT_ID')
+            ?: '',
 
-        'client_secret' => 'YOUR_GOOGLE_CLIENT_SECRET',
+        'client_secret' =>
+            getenv('GOOGLE_SOCIAL_CLIENT_SECRET')
+            ?: getenv('GMAIL_CLIENT_SECRET')
+            ?: '',
 
         'redirect_uri' =>
-            'http://localhost/centuria-hotel/backend/auth/social-callback.php?provider=google',
+            'https://centuria-hotel-production.up.railway.app/auth/social-callback.php?provider=google',
 
         'authorize_url' =>
             'https://accounts.google.com/o/oauth2/v2/auth',
@@ -31,12 +39,14 @@ return [
     'facebook' => [
         'enabled' => false,
 
-        'client_id' => 'YOUR_FACEBOOK_APP_ID',
+        'client_id' =>
+            getenv('FACEBOOK_APP_ID') ?: '',
 
-        'client_secret' => 'YOUR_FACEBOOK_APP_SECRET',
+        'client_secret' =>
+            getenv('FACEBOOK_APP_SECRET') ?: '',
 
         'redirect_uri' =>
-            'http://localhost/centuria-hotel/backend/auth/social-callback.php?provider=facebook',
+            'https://centuria-hotel-production.up.railway.app/auth/social-callback.php?provider=facebook',
 
         'authorize_url' =>
             'https://www.facebook.com/v23.0/dialog/oauth',
@@ -55,19 +65,19 @@ return [
         'enabled' => false,
 
         'client_id' =>
-            'YOUR_APPLE_SERVICE_ID',
+            getenv('APPLE_SERVICE_ID') ?: '',
 
         'team_id' =>
-            'YOUR_APPLE_TEAM_ID',
+            getenv('APPLE_TEAM_ID') ?: '',
 
         'key_id' =>
-            'YOUR_APPLE_KEY_ID',
+            getenv('APPLE_KEY_ID') ?: '',
 
         'private_key_path' =>
             __DIR__ . '/../keys/AuthKey.p8',
 
         'redirect_uri' =>
-            'https://YOUR_DOMAIN.com/centuria-hotel/backend/auth/social-callback.php?provider=apple',
+            'https://centuria-hotel-production.up.railway.app/auth/social-callback.php?provider=apple',
 
         'authorize_url' =>
             'https://appleid.apple.com/auth/authorize',
@@ -83,13 +93,13 @@ return [
         'enabled' => false,
 
         'client_id' =>
-            'YOUR_TIKTOK_CLIENT_KEY',
+            getenv('TIKTOK_CLIENT_KEY') ?: '',
 
         'client_secret' =>
-            'YOUR_TIKTOK_CLIENT_SECRET',
+            getenv('TIKTOK_CLIENT_SECRET') ?: '',
 
         'redirect_uri' =>
-            'https://YOUR_DOMAIN.com/centuria-hotel/backend/auth/social-callback.php?provider=tiktok',
+            'https://centuria-hotel-production.up.railway.app/auth/social-callback.php?provider=tiktok',
 
         'authorize_url' =>
             'https://www.tiktok.com/v2/auth/authorize/',

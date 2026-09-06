@@ -3,7 +3,20 @@
 declare(strict_types=1);
 
 header('Content-Type: application/json; charset=utf-8');
-header('Access-Control-Allow-Origin: http://localhost:5173');
+
+$allowedOrigins = [
+    'http://localhost:5173',
+    'https://fanciful-dieffenbachia-547197.netlify.app',
+    'https://subtle-dolphin-0f6b7f.netlify.app'
+];
+
+$origin = $_SERVER['HTTP_ORIGIN'] ?? '';
+
+if (in_array($origin, $allowedOrigins, true)) {
+    header('Access-Control-Allow-Origin: ' . $origin);
+}
+
+header('Vary: Origin');
 header('Access-Control-Allow-Headers: Content-Type');
 header('Access-Control-Allow-Methods: POST, OPTIONS');
 
