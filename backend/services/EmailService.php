@@ -4,14 +4,14 @@ declare(strict_types=1);
 
 class EmailService
 {
-    private array $resendConfig;
+    private array $gmailConfig;
     private array $appConfig;
 
     public function __construct()
     {
         $config = require __DIR__ . '/../config/config.php';
 
-        $this->resendConfig = $config['resend'];
+        $this->gmailConfig = $config['gmail'];
         $this->appConfig = $config['app'];
     }
 
@@ -20,16 +20,11 @@ class EmailService
         string $otp,
         string $purpose = 'registration'
     ): bool {
-        $apiKey = $this->resendConfig['api_key'];
+        $accessToken = $this->getAccessToken();
 
-        if ($apiKey === '') {
-            error_log('RESEND_API_KEY is missing.');
-
+        if ($accessToken === null) {
             return false;
         }
-
-        $fromEmail = $this->resendConfig['from_email'];
-        $fromName = $this->resendConfig['from_name'];
 
         $subject = $purpose === 'password_reset'
             ? 'Centuria Lake Resort Password Reset OTP'
@@ -44,7 +39,11 @@ class EmailService
             : 'Use the verification code below to complete your registration.';
 
         $expirySeconds = (int) $this->appConfig['otp_expiry_seconds'];
-        $expiryMinutes = max(1, (int) ceil($expirySeconds / 60));
+
+        $expiryMinutes = max(
+            1,
+            (int) ceil($expirySeconds / 60)
+        );
 
         $html = $this->buildOtpEmail(
             $title,
@@ -53,24 +52,178 @@ class EmailService
             $expiryMinutes
         );
 
-        $payload = [
-            'from' => sprintf(
-                '%s <%s>',
-                $fromName,
-                $fromEmail
-            ),
-            'to' => [$email],
-            'subject' => $subject,
-            'html' => $html
-        ];
+        return $this->sendEmail(
+            $accessToken,
+            $email,
+            $subject,
+            $html
+        );
+    }
+
+    private function getAccessToken(): ?string
+    {
+        $clientId = $this->gmailConfig['client_id'];
+        $clientSecret = $this->gmailConfig['client_secret'];
+        $refreshToken = $this->gmailConfig['refresh_token'];
+
+        if (
+            $clientId === '' ||
+            $clientSecret === '' ||
+            $refreshToken === ''
+        ) {
+            error_log(
+                'Gmail OAuth credentials are missing.'
+            );
+
+            return null;
+        }
 
         $ch = curl_init(
-            'https://api.resend.com/emails'
+            'https://oauth2.googleapis.com/token'
         );
 
         if ($ch === false) {
             error_log(
-                'Unable to initialize cURL.'
+                'Unable to initialize OAuth cURL request.'
+            );
+
+            return null;
+        }
+
+        curl_setopt_array(
+            $ch,
+            [
+                CURLOPT_POST => true,
+                CURLOPT_RETURNTRANSFER => true,
+                CURLOPT_HTTPHEADER => [
+                    'Content-Type: application/x-www-form-urlencoded'
+                ],
+                CURLOPT_POSTFIELDS => http_build_query(
+                    [
+                        'client_id' => $clientId,
+                        'client_secret' => $clientSecret,
+                        'refresh_token' => $refreshToken,
+                        'grant_type' => 'refresh_token'
+                    ]
+                ),
+                CURLOPT_CONNECTTIMEOUT => 10,
+                CURLOPT_TIMEOUT => 20
+            ]
+        );
+
+        $response = curl_exec($ch);
+
+        $curlError = curl_error($ch);
+
+        $statusCode = (int) curl_getinfo(
+            $ch,
+            CURLINFO_HTTP_CODE
+        );
+
+        curl_close($ch);
+
+        if ($response === false) {
+            error_log(
+                'Google OAuth request failed: ' .
+                $curlError
+            );
+
+            return null;
+        }
+
+        $data = json_decode(
+            $response,
+            true
+        );
+
+        if (
+            $statusCode < 200 ||
+            $statusCode >= 300 ||
+            !is_array($data) ||
+            empty($data['access_token'])
+        ) {
+            error_log(
+                'Google OAuth token error. HTTP ' .
+                $statusCode .
+                ': ' .
+                $response
+            );
+
+            return null;
+        }
+
+        return (string) $data['access_token'];
+    }
+
+    private function sendEmail(
+        string $accessToken,
+        string $recipient,
+        string $subject,
+        string $html
+    ): bool {
+        $fromEmail = $this->gmailConfig['from_email'];
+        $fromName = $this->gmailConfig['from_name'];
+
+        if ($fromEmail === '') {
+            error_log(
+                'GMAIL_FROM_EMAIL is missing.'
+            );
+
+            return false;
+        }
+
+        $encodedSubject = sprintf(
+            '=?UTF-8?B?%s?=',
+            base64_encode($subject)
+        );
+
+        $message = implode(
+            "\r\n",
+            [
+                'From: ' . $fromName . ' <' . $fromEmail . '>',
+                'To: ' . $recipient,
+                'Subject: ' . $encodedSubject,
+                'MIME-Version: 1.0',
+                'Content-Type: text/html; charset=UTF-8',
+                'Content-Transfer-Encoding: base64',
+                '',
+                chunk_split(
+                    base64_encode($html)
+                )
+            ]
+        );
+
+        $raw = rtrim(
+            strtr(
+                base64_encode($message),
+                '+/',
+                '-_'
+            ),
+            '='
+        );
+
+        $payload = json_encode(
+            [
+                'raw' => $raw
+            ],
+            JSON_UNESCAPED_SLASHES
+        );
+
+        if ($payload === false) {
+            error_log(
+                'Unable to encode Gmail payload.'
+            );
+
+            return false;
+        }
+
+        $ch = curl_init(
+            'https://gmail.googleapis.com/gmail/v1/users/me/messages/send'
+        );
+
+        if ($ch === false) {
+            error_log(
+                'Unable to initialize Gmail cURL request.'
             );
 
             return false;
@@ -82,20 +235,19 @@ class EmailService
                 CURLOPT_POST => true,
                 CURLOPT_RETURNTRANSFER => true,
                 CURLOPT_HTTPHEADER => [
-                    'Authorization: Bearer ' . $apiKey,
+                    'Authorization: Bearer ' . $accessToken,
                     'Content-Type: application/json'
                 ],
-                CURLOPT_POSTFIELDS => json_encode(
-                    $payload,
-                    JSON_UNESCAPED_SLASHES
-                ),
+                CURLOPT_POSTFIELDS => $payload,
                 CURLOPT_CONNECTTIMEOUT => 10,
                 CURLOPT_TIMEOUT => 20
             ]
         );
 
         $response = curl_exec($ch);
+
         $curlError = curl_error($ch);
+
         $statusCode = (int) curl_getinfo(
             $ch,
             CURLINFO_HTTP_CODE
@@ -105,7 +257,7 @@ class EmailService
 
         if ($response === false) {
             error_log(
-                'Resend request failed: ' .
+                'Gmail API request failed: ' .
                 $curlError
             );
 
@@ -117,7 +269,7 @@ class EmailService
             $statusCode >= 300
         ) {
             error_log(
-                'Resend API error. HTTP ' .
+                'Gmail API send error. HTTP ' .
                 $statusCode .
                 ': ' .
                 $response
@@ -199,9 +351,7 @@ class EmailService
                         background:#ffffff;
                         border-radius:20px;
                         overflow:hidden;
-                        box-shadow:
-                            0 12px 35px
-                            rgba(0,0,0,0.08);
+                        box-shadow:0 12px 35px rgba(0,0,0,0.08);
                     "
                 >
                     <tr>

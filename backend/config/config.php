@@ -9,15 +9,21 @@ return [
         'reset_token_expiry_seconds' => 600
     ],
 
-    'resend' => [
-        'api_key' =>
-            getenv('RESEND_API_KEY') ?: '',
+    'gmail' => [
+        'client_id' =>
+            getenv('GMAIL_CLIENT_ID') ?: '',
+
+        'client_secret' =>
+            getenv('GMAIL_CLIENT_SECRET') ?: '',
+
+        'refresh_token' =>
+            getenv('GMAIL_REFRESH_TOKEN') ?: '',
 
         'from_email' =>
-            getenv('RESEND_FROM_EMAIL') ?: 'onboarding@resend.dev',
+            getenv('GMAIL_FROM_EMAIL') ?: '',
 
         'from_name' =>
-            getenv('RESEND_FROM_NAME') ?: 'Centuria Lake Resort'
+            getenv('GMAIL_FROM_NAME') ?: 'Centuria Lake Resort'
     ],
 
     'role_keywords' => [
