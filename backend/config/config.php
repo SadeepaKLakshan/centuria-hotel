@@ -9,41 +9,25 @@ return [
         'reset_token_expiry_seconds' => 600
     ],
 
-    'smtp' => [
-        'host' =>
-            getenv('SMTP_HOST') ?: 'smtp.gmail.com',
-
-        'port' =>
-            (int)(getenv('SMTP_PORT') ?: 587),
-
-        'username' =>
-            getenv('SMTP_USERNAME') ?: '',
-
-        'password' =>
-            getenv('SMTP_PASSWORD') ?: '',
-
-        'encryption' =>
-            'tls',
+    'resend' => [
+        'api_key' =>
+            getenv('RESEND_API_KEY') ?: '',
 
         'from_email' =>
-            getenv('SMTP_FROM_EMAIL') ?: '',
+            getenv('RESEND_FROM_EMAIL') ?: 'onboarding@resend.dev',
 
         'from_name' =>
-            getenv('SMTP_FROM_NAME')
-            ?: 'Centuria Lake Resort'
+            getenv('RESEND_FROM_NAME') ?: 'Centuria Lake Resort'
     ],
 
     'role_keywords' => [
         'admin' =>
-            getenv('ADMIN_KEYWORD')
-            ?: 'Admin123',
+            getenv('ADMIN_KEYWORD') ?: 'Admin123',
 
         'manager' =>
-            getenv('MANAGER_KEYWORD')
-            ?: 'Manager123',
+            getenv('MANAGER_KEYWORD') ?: 'Manager123',
 
         'staff' =>
-            getenv('STAFF_KEYWORD')
-            ?: 'Staff123'
+            getenv('STAFF_KEYWORD') ?: 'Staff123'
     ]
 ];
