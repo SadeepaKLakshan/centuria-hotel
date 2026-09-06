@@ -1,12 +1,14 @@
 CREATE TABLE IF NOT EXISTS api_tokens (
-    id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
-    user_id BIGINT UNSIGNED NOT NULL,
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    user_id INT NOT NULL,
     token_hash VARCHAR(64) NOT NULL UNIQUE,
     expires_at DATETIME NOT NULL,
     created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
     last_used_at DATETIME NULL,
+
     INDEX idx_api_tokens_user_id (user_id),
     INDEX idx_api_tokens_token_hash (token_hash),
+
     CONSTRAINT fk_api_tokens_user
         FOREIGN KEY (user_id)
         REFERENCES users(id)
@@ -14,9 +16,11 @@ CREATE TABLE IF NOT EXISTS api_tokens (
 );
 
 CREATE TABLE IF NOT EXISTS customer_orders (
-    id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+    id INT AUTO_INCREMENT PRIMARY KEY,
+
     order_number VARCHAR(40) NOT NULL UNIQUE,
-    customer_id BIGINT UNSIGNED NOT NULL,
+
+    customer_id INT NOT NULL,
 
     order_type ENUM(
         'room',
@@ -29,9 +33,11 @@ CREATE TABLE IF NOT EXISTS customer_orders (
     ) NOT NULL,
 
     title VARCHAR(150) NOT NULL,
+
     description TEXT NULL,
 
     total_amount DECIMAL(12,2) NOT NULL DEFAULT 0.00,
+
     currency VARCHAR(10) NOT NULL DEFAULT 'LKR',
 
     status ENUM(
@@ -53,16 +59,20 @@ CREATE TABLE IF NOT EXISTS customer_orders (
         'refunded'
     ) NOT NULL DEFAULT 'unpaid',
 
-    assigned_admin_id BIGINT UNSIGNED NULL,
+    assigned_admin_id INT NULL,
 
     customer_note TEXT NULL,
+
     admin_note TEXT NULL,
 
     requested_date DATE NULL,
+
     requested_time TIME NULL,
 
     accepted_at DATETIME NULL,
+
     declined_at DATETIME NULL,
+
     completed_at DATETIME NULL,
 
     created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -88,14 +98,18 @@ CREATE TABLE IF NOT EXISTS customer_orders (
 );
 
 CREATE TABLE IF NOT EXISTS order_items (
-    id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
-    order_id BIGINT UNSIGNED NOT NULL,
+    id INT AUTO_INCREMENT PRIMARY KEY,
+
+    order_id INT NOT NULL,
 
     item_name VARCHAR(150) NOT NULL,
+
     item_description TEXT NULL,
 
     quantity INT UNSIGNED NOT NULL DEFAULT 1,
+
     unit_price DECIMAL(12,2) NOT NULL DEFAULT 0.00,
+
     subtotal DECIMAL(12,2) NOT NULL DEFAULT 0.00,
 
     created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -109,13 +123,16 @@ CREATE TABLE IF NOT EXISTS order_items (
 );
 
 CREATE TABLE IF NOT EXISTS order_status_history (
-    id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
-    order_id BIGINT UNSIGNED NOT NULL,
+    id INT AUTO_INCREMENT PRIMARY KEY,
+
+    order_id INT NOT NULL,
 
     old_status VARCHAR(30) NULL,
+
     new_status VARCHAR(30) NOT NULL,
 
-    changed_by BIGINT UNSIGNED NULL,
+    changed_by INT NULL,
+
     note TEXT NULL,
 
     created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -134,8 +151,9 @@ CREATE TABLE IF NOT EXISTS order_status_history (
 );
 
 CREATE TABLE IF NOT EXISTS conversations (
-    id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
-    customer_id BIGINT UNSIGNED NOT NULL,
+    id INT AUTO_INCREMENT PRIMARY KEY,
+
+    customer_id INT NOT NULL,
 
     subject VARCHAR(150) NOT NULL DEFAULT 'Customer Support',
 
@@ -160,9 +178,11 @@ CREATE TABLE IF NOT EXISTS conversations (
 );
 
 CREATE TABLE IF NOT EXISTS messages (
-    id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
-    conversation_id BIGINT UNSIGNED NOT NULL,
-    sender_id BIGINT UNSIGNED NOT NULL,
+    id INT AUTO_INCREMENT PRIMARY KEY,
+
+    conversation_id INT NOT NULL,
+
+    sender_id INT NOT NULL,
 
     sender_role ENUM(
         'customer',
@@ -193,16 +213,19 @@ CREATE TABLE IF NOT EXISTS messages (
 );
 
 CREATE TABLE IF NOT EXISTS admin_notifications (
-    id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+    id INT AUTO_INCREMENT PRIMARY KEY,
 
-    user_id BIGINT UNSIGNED NULL,
+    user_id INT NULL,
 
     type VARCHAR(50) NOT NULL,
+
     title VARCHAR(150) NOT NULL,
+
     message TEXT NOT NULL,
 
     reference_type VARCHAR(50) NULL,
-    reference_id BIGINT UNSIGNED NULL,
+
+    reference_id INT NULL,
 
     is_read TINYINT(1) NOT NULL DEFAULT 0,
 
