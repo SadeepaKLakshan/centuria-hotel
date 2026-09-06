@@ -1,6 +1,6 @@
 CREATE TABLE IF NOT EXISTS api_tokens (
-    id INT AUTO_INCREMENT PRIMARY KEY,
-    user_id INT NOT NULL,
+    id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+    user_id INT UNSIGNED NOT NULL,
     token_hash VARCHAR(64) NOT NULL UNIQUE,
     expires_at DATETIME NOT NULL,
     created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -16,11 +16,11 @@ CREATE TABLE IF NOT EXISTS api_tokens (
 );
 
 CREATE TABLE IF NOT EXISTS customer_orders (
-    id INT AUTO_INCREMENT PRIMARY KEY,
+    id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
 
     order_number VARCHAR(40) NOT NULL UNIQUE,
 
-    customer_id INT NOT NULL,
+    customer_id INT UNSIGNED NOT NULL,
 
     order_type ENUM(
         'room',
@@ -59,7 +59,7 @@ CREATE TABLE IF NOT EXISTS customer_orders (
         'refunded'
     ) NOT NULL DEFAULT 'unpaid',
 
-    assigned_admin_id INT NULL,
+    assigned_admin_id INT UNSIGNED NULL,
 
     customer_note TEXT NULL,
 
@@ -98,9 +98,9 @@ CREATE TABLE IF NOT EXISTS customer_orders (
 );
 
 CREATE TABLE IF NOT EXISTS order_items (
-    id INT AUTO_INCREMENT PRIMARY KEY,
+    id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
 
-    order_id INT NOT NULL,
+    order_id INT UNSIGNED NOT NULL,
 
     item_name VARCHAR(150) NOT NULL,
 
@@ -123,21 +123,22 @@ CREATE TABLE IF NOT EXISTS order_items (
 );
 
 CREATE TABLE IF NOT EXISTS order_status_history (
-    id INT AUTO_INCREMENT PRIMARY KEY,
+    id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
 
-    order_id INT NOT NULL,
+    order_id INT UNSIGNED NOT NULL,
 
     old_status VARCHAR(30) NULL,
 
     new_status VARCHAR(30) NOT NULL,
 
-    changed_by INT NULL,
+    changed_by INT UNSIGNED NULL,
 
     note TEXT NULL,
 
     created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
 
     INDEX idx_status_history_order (order_id),
+    INDEX idx_status_history_changed_by (changed_by),
 
     CONSTRAINT fk_status_history_order
         FOREIGN KEY (order_id)
@@ -151,9 +152,9 @@ CREATE TABLE IF NOT EXISTS order_status_history (
 );
 
 CREATE TABLE IF NOT EXISTS conversations (
-    id INT AUTO_INCREMENT PRIMARY KEY,
+    id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
 
-    customer_id INT NOT NULL,
+    customer_id INT UNSIGNED NOT NULL,
 
     subject VARCHAR(150) NOT NULL DEFAULT 'Customer Support',
 
@@ -178,11 +179,11 @@ CREATE TABLE IF NOT EXISTS conversations (
 );
 
 CREATE TABLE IF NOT EXISTS messages (
-    id INT AUTO_INCREMENT PRIMARY KEY,
+    id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
 
-    conversation_id INT NOT NULL,
+    conversation_id INT UNSIGNED NOT NULL,
 
-    sender_id INT NOT NULL,
+    sender_id INT UNSIGNED NOT NULL,
 
     sender_role ENUM(
         'customer',
@@ -213,9 +214,9 @@ CREATE TABLE IF NOT EXISTS messages (
 );
 
 CREATE TABLE IF NOT EXISTS admin_notifications (
-    id INT AUTO_INCREMENT PRIMARY KEY,
+    id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
 
-    user_id INT NULL,
+    user_id INT UNSIGNED NULL,
 
     type VARCHAR(50) NOT NULL,
 
@@ -225,12 +226,17 @@ CREATE TABLE IF NOT EXISTS admin_notifications (
 
     reference_type VARCHAR(50) NULL,
 
-    reference_id INT NULL,
+    reference_id INT UNSIGNED NULL,
 
     is_read TINYINT(1) NOT NULL DEFAULT 0,
 
     created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
 
     INDEX idx_notifications_user (user_id),
-    INDEX idx_notifications_read (is_read)
+    INDEX idx_notifications_read (is_read),
+
+    CONSTRAINT fk_admin_notifications_user
+        FOREIGN KEY (user_id)
+        REFERENCES users(id)
+        ON DELETE CASCADE
 );
