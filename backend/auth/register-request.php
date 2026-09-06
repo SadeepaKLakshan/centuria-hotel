@@ -3,7 +3,19 @@
 declare(strict_types=1);
 
 header('Content-Type: application/json; charset=utf-8');
-header('Access-Control-Allow-Origin: http://localhost:5173');
+
+$allowedOrigins = [
+    'http://localhost:5173',
+    'https://fanciful-dieffenbachia-547197.netlify.app'
+];
+
+$origin = $_SERVER['HTTP_ORIGIN'] ?? '';
+
+if (in_array($origin, $allowedOrigins, true)) {
+    header('Access-Control-Allow-Origin: ' . $origin);
+}
+
+header('Vary: Origin');
 header('Access-Control-Allow-Headers: Content-Type');
 header('Access-Control-Allow-Methods: POST, OPTIONS');
 
@@ -61,12 +73,39 @@ try {
         );
     }
 
-    $fullName = trim((string)($input['full_name'] ?? ''));
-    $email = strtolower(trim((string)($input['email'] ?? '')));
-    $password = (string)($input['password'] ?? '');
-    $country = trim((string)($input['country'] ?? 'Sri Lanka'));
-    $role = strtolower(trim((string)($input['role'] ?? 'customer')));
-    $roleKeyword = trim((string)($input['role_keyword'] ?? ''));
+    $fullName = trim(
+        (string)($input['full_name'] ?? '')
+    );
+
+    $email = strtolower(
+        trim(
+            (string)($input['email'] ?? '')
+        )
+    );
+
+    $password = (string)(
+        $input['password'] ?? ''
+    );
+
+    $country = trim(
+        (string)(
+            $input['country'] ?? 'Sri Lanka'
+        )
+    );
+
+    $role = strtolower(
+        trim(
+            (string)(
+                $input['role'] ?? 'customer'
+            )
+        )
+    );
+
+    $roleKeyword = trim(
+        (string)(
+            $input['role_keyword'] ?? ''
+        )
+    );
 
     if ($fullName === '') {
         respond(
@@ -77,7 +116,12 @@ try {
         );
     }
 
-    if (!filter_var($email, FILTER_VALIDATE_EMAIL)) {
+    if (
+        !filter_var(
+            $email,
+            FILTER_VALIDATE_EMAIL
+        )
+    ) {
         respond(
             false,
             'Please enter a valid email address.',
@@ -102,7 +146,13 @@ try {
         'admin'
     ];
 
-    if (!in_array($role, $allowedRoles, true)) {
+    if (
+        !in_array(
+            $role,
+            $allowedRoles,
+            true
+        )
+    ) {
         respond(
             false,
             'Invalid account role.',
@@ -171,11 +221,20 @@ try {
     );
 
     $expirySeconds =
-        (int)($config['app']['otp_expiry_seconds'] ?? 120);
+        (int)(
+            $config['app']['otp_expiry_seconds']
+            ?? 120
+        );
 
-    $expiresAt = (new DateTimeImmutable())
-        ->modify("+{$expirySeconds} seconds")
-        ->format('Y-m-d H:i:s');
+    $expiresAt = (
+        new DateTimeImmutable()
+    )
+        ->modify(
+            "+{$expirySeconds} seconds"
+        )
+        ->format(
+            'Y-m-d H:i:s'
+        );
 
     $pdo->beginTransaction();
 
