@@ -1,4 +1,5 @@
 import {
+    useCallback,
     useEffect,
     useMemo,
     useRef,
@@ -52,8 +53,71 @@ import {
     FaWhatsapp
 } from "react-icons/fa6";
 
+import { getAuthHeaders } from "../../utils/auth";
 import "./CustomerDashboard.css";
 import centuriaLogo from "../../assets/images/centuria-logo.png";
+
+const API_URL =
+    import.meta.env.VITE_API_URL ||
+    "http://localhost/centuria-hotel/backend";
+
+const TRACKING_STEPS = [
+    "pending",
+    "accepted",
+    "confirmed",
+    "processing",
+    "completed"
+];
+
+function formatOrderMoney(value, currency = "LKR") {
+    const amount = Number(value || 0);
+
+    return new Intl.NumberFormat("en-LK", {
+        style: "currency",
+        currency: currency || "LKR",
+        maximumFractionDigits: 0
+    }).format(
+        Number.isFinite(amount) ? amount : 0
+    );
+}
+
+function formatOrderDate(value) {
+    if (!value) {
+        return "-";
+    }
+
+    const date = new Date(value);
+
+    if (Number.isNaN(date.getTime())) {
+        return String(value);
+    }
+
+    return date.toLocaleDateString("en-LK", {
+        year: "numeric",
+        month: "short",
+        day: "2-digit"
+    });
+}
+
+function getTrackingIndex(status) {
+    const cleanStatus = String(
+        status || "pending"
+    ).toLowerCase();
+
+    if (cleanStatus === "active") {
+        return 3;
+    }
+
+    if (cleanStatus === "cancelled" || cleanStatus === "declined") {
+        return -1;
+    }
+
+    const index = TRACKING_STEPS.indexOf(
+        cleanStatus
+    );
+
+    return index >= 0 ? index : 0;
+}
 
 const heroSlides = [
     {
@@ -197,30 +261,18 @@ const offerCards = [
             "https://images.unsplash.com/photo-1500530855697-b586d89ba3ee?auto=format&fit=crop&w=1000&q=85",
         action: "View Tours",
         route: "/tours"
-    }
-];
-
-const reviews = [
-    {
-        id: 1,
-        name: "Amelia Watson",
-        text:
-            "Beautiful resort experience. The rooms were comfortable and the service was excellent.",
-        rating: 5
     },
     {
-        id: 2,
-        name: "Daniel Silva",
-        text:
-            "The dining experience and staff hospitality were outstanding. Highly recommended.",
-        rating: 5
-    },
-    {
-        id: 3,
-        name: "Sophia Fernando",
-        text:
-            "A peaceful stay with beautiful surroundings. The spa experience was wonderful.",
-        rating: 5
+        id: 4,
+        label: "WELLNESS",
+        title: "Premium Spa",
+        subtitle: "Relax & Refresh",
+        description:
+            "Enjoy peaceful spa and wellness experiences designed for complete relaxation.",
+        image:
+            "https://images.unsplash.com/photo-1540555700478-4be289fbecef?auto=format&fit=crop&w=1000&q=85",
+        action: "View Spa",
+        route: "/spa"
     }
 ];
 
@@ -355,6 +407,11 @@ function CustomerDashboard() {
     ] = useState(false);
 
     const [
+        profileSaving,
+        setProfileSaving
+    ] = useState(false);
+
+    const [
         rating,
         setRating
     ] = useState(5);
@@ -369,6 +426,41 @@ function CustomerDashboard() {
         setReviewMessage
     ] = useState("");
 
+    const [
+        realReviews,
+        setRealReviews
+    ] = useState([]);
+
+    const [
+        reviewsLoading,
+        setReviewsLoading
+    ] = useState(true);
+
+    const [
+        reviewSaving,
+        setReviewSaving
+    ] = useState(false);
+
+    const [
+        orders,
+        setOrders
+    ] = useState([]);
+
+    const [
+        ordersLoading,
+        setOrdersLoading
+    ] = useState(true);
+
+    const [
+        ordersError,
+        setOrdersError
+    ] = useState("");
+
+    const [
+        selectedOrder,
+        setSelectedOrder
+    ] = useState(null);
+
     const currentHero =
         heroSlides[currentSlide];
 
@@ -382,6 +474,306 @@ function CustomerDashboard() {
                 ? name.split(/\s+/)[0]
                 : "Guest";
         }, [profile.name]);
+
+    const fetchProfile =
+        useCallback(
+            async () => {
+                try {
+                    const response =
+                        await fetch(
+                            `${API_URL}/customer/profile.php`,
+                            {
+                                method: "GET",
+                                headers:
+                                    getAuthHeaders()
+                            }
+                        );
+
+                    const data =
+                        await response.json();
+
+                    if (response.status === 401) {
+                        localStorage.removeItem(
+                            "centuria_logged_in"
+                        );
+                        localStorage.removeItem(
+                            "centuria_token"
+                        );
+                        localStorage.removeItem(
+                            "centuria_user"
+                        );
+
+                        navigate(
+                            "/portal?mode=login",
+                            {
+                                replace: true
+                            }
+                        );
+
+                        return;
+                    }
+
+                    if (
+                        !response.ok ||
+                        data.success === false ||
+                        !data.user
+                    ) {
+                        throw new Error(
+                            data.message ||
+                            "Unable to load your profile."
+                        );
+                    }
+
+                    const serverUser =
+                        data.user;
+
+                    const updatedProfile = {
+                        id:
+                            serverUser.id ||
+                            null,
+
+                        name:
+                            serverUser.full_name ||
+                            fallbackProfile.name,
+
+                        email:
+                            serverUser.email ||
+                            fallbackProfile.email,
+
+                        phone:
+                            serverUser.phone ||
+                            "",
+
+                        country:
+                            serverUser.country ||
+                            "Sri Lanka",
+
+                        membership:
+                            "Premium Member",
+
+                        image:
+                            serverUser.profile_image ||
+                            ""
+                    };
+
+                    setProfile(
+                        updatedProfile
+                    );
+
+                    setEditProfile(
+                        updatedProfile
+                    );
+
+                    localStorage.setItem(
+                        `centuria_profile_${updatedProfile.email}`,
+                        JSON.stringify(
+                            updatedProfile
+                        )
+                    );
+
+                    const storedUser =
+                        getStoredUser();
+
+                    localStorage.setItem(
+                        "centuria_user",
+                        JSON.stringify({
+                            ...(storedUser || {}),
+                            id:
+                                serverUser.id,
+                            full_name:
+                                serverUser.full_name,
+                            email:
+                                serverUser.email,
+                            phone:
+                                serverUser.phone || "",
+                            country:
+                                serverUser.country || "Sri Lanka",
+                            country_code:
+                                serverUser.country_code || "",
+                            role:
+                                serverUser.role || "customer",
+                            profile_image:
+                                serverUser.profile_image || ""
+                        })
+                    );
+                } catch (error) {
+                    console.error(
+                        "Customer profile load error:",
+                        error
+                    );
+                }
+            },
+            [navigate]
+        );
+
+    const fetchOrders =
+        useCallback(
+            async (showLoader = false) => {
+                try {
+                    if (showLoader) {
+                        setOrdersLoading(true);
+                    }
+
+                    setOrdersError("");
+
+                    const response =
+                        await fetch(
+                            `${API_URL}/customer/orders.php`,
+                            {
+                                method: "GET",
+                                headers:
+                                    getAuthHeaders()
+                            }
+                        );
+
+                    const data =
+                        await response.json();
+
+                    if (response.status === 401) {
+                        localStorage.removeItem(
+                            "centuria_logged_in"
+                        );
+                        localStorage.removeItem(
+                            "centuria_token"
+                        );
+                        localStorage.removeItem(
+                            "centuria_user"
+                        );
+
+                        navigate(
+                            "/portal?mode=login",
+                            {
+                                replace: true
+                            }
+                        );
+
+                        return;
+                    }
+
+                    if (
+                        !response.ok ||
+                        data.success === false
+                    ) {
+                        throw new Error(
+                            data.message ||
+                            "Unable to load your orders."
+                        );
+                    }
+
+                    setOrders(
+                        Array.isArray(
+                            data.orders
+                        )
+                            ? data.orders
+                            : []
+                    );
+                } catch (error) {
+                    setOrdersError(
+                        error.message ||
+                        "Unable to load your orders."
+                    );
+                } finally {
+                    setOrdersLoading(false);
+                }
+            },
+            [navigate]
+        );
+
+    const fetchReviews =
+        useCallback(
+            async (
+                showLoader = false
+            ) => {
+                try {
+                    if (showLoader) {
+                        setReviewsLoading(
+                            true
+                        );
+                    }
+
+                    const response =
+                        await fetch(
+                            `${API_URL}/customer/reviews.php`,
+                            {
+                                method: "GET",
+                                headers:
+                                    getAuthHeaders()
+                            }
+                        );
+
+                    const data =
+                        await response.json();
+
+                    if (
+                        response.status ===
+                        401
+                    ) {
+                        localStorage.removeItem(
+                            "centuria_logged_in"
+                        );
+
+                        localStorage.removeItem(
+                            "centuria_token"
+                        );
+
+                        localStorage.removeItem(
+                            "centuria_user"
+                        );
+
+                        navigate(
+                            "/portal?mode=login",
+                            {
+                                replace: true
+                            }
+                        );
+
+                        return;
+                    }
+
+                    if (
+                        !response.ok ||
+                        data.success === false
+                    ) {
+                        throw new Error(
+                            data.message ||
+                            "Unable to load reviews."
+                        );
+                    }
+
+                    setRealReviews(
+                        Array.isArray(
+                            data.reviews
+                        )
+                            ? data.reviews
+                            : []
+                    );
+
+                    if (data.my_review) {
+                        setRating(
+                            Number(
+                                data.my_review.rating ||
+                                5
+                            )
+                        );
+
+                        setReviewText(
+                            data.my_review.review_text ||
+                            ""
+                        );
+                    }
+                } catch (error) {
+                    console.error(
+                        "Reviews load error:",
+                        error
+                    );
+                } finally {
+                    setReviewsLoading(
+                        false
+                    );
+                }
+            },
+            [navigate]
+        );
 
     useEffect(() => {
         const user =
@@ -401,7 +793,33 @@ function CustomerDashboard() {
         setProfile(
             buildProfile(user)
         );
-    }, [navigate]);
+
+        fetchProfile();
+    }, [
+        navigate,
+        fetchProfile
+    ]);
+
+    useEffect(() => {
+        fetchOrders(true);
+
+        const polling =
+            window.setInterval(
+                () => {
+                    fetchOrders(false);
+                },
+                8000
+            );
+
+        return () =>
+            window.clearInterval(
+                polling
+            );
+    }, [fetchOrders]);
+
+    useEffect(() => {
+        fetchReviews(true);
+    }, [fetchReviews]);
 
     useEffect(() => {
         const timer =
@@ -461,16 +879,32 @@ function CustomerDashboard() {
         }
 
         if (item === "bookings") {
-            showComingSoon(
-                "My Bookings"
-            );
+            document
+                .getElementById(
+                    "customer-orders-section"
+                )
+                ?.scrollIntoView({
+                    behavior: "smooth",
+                    block: "start"
+                });
             return;
         }
 
         if (item === "tracking") {
-            showComingSoon(
-                "Booking Tracking"
-            );
+            if (orders.length > 0) {
+                setSelectedOrder(
+                    orders[0]
+                );
+            } else {
+                document
+                    .getElementById(
+                        "customer-orders-section"
+                    )
+                    ?.scrollIntoView({
+                        behavior: "smooth",
+                        block: "start"
+                    });
+            }
             return;
         }
 
@@ -556,6 +990,16 @@ function CustomerDashboard() {
             return;
         }
 
+        if (
+            file.size >
+            1800000
+        ) {
+            setInfoModal(
+                "Please select an image smaller than 1.8 MB."
+            );
+            return;
+        }
+
         const reader =
             new FileReader();
 
@@ -574,7 +1018,7 @@ function CustomerDashboard() {
         );
     };
 
-    const saveProfile = (
+    const saveProfile = async (
         event
     ) => {
         event.preventDefault();
@@ -597,49 +1041,169 @@ function CustomerDashboard() {
         };
 
         if (!updatedProfile.name) {
+            setInfoModal(
+                "Please enter your full name."
+            );
             return;
         }
 
-        setProfile(
-            updatedProfile
-        );
+        try {
+            setProfileSaving(true);
+            setSaveSuccess(false);
 
-        localStorage.setItem(
-            `centuria_profile_${profile.email}`,
-            JSON.stringify(
-                updatedProfile
-            )
-        );
+            const response =
+                await fetch(
+                    `${API_URL}/customer/profile.php`,
+                    {
+                        method: "PATCH",
+                        headers: {
+                            ...getAuthHeaders(),
+                            "Content-Type":
+                                "application/json"
+                        },
+                        body:
+                            JSON.stringify({
+                                full_name:
+                                    updatedProfile.name,
+                                phone:
+                                    updatedProfile.phone,
+                                country:
+                                    updatedProfile.country,
+                                country_code:
+                                    "",
+                                profile_image:
+                                    updatedProfile.image || ""
+                            })
+                    }
+                );
 
-        const storedUser =
-            getStoredUser();
+            const data =
+                await response.json();
 
-        if (storedUser) {
+            if (response.status === 401) {
+                localStorage.removeItem(
+                    "centuria_logged_in"
+                );
+                localStorage.removeItem(
+                    "centuria_token"
+                );
+                localStorage.removeItem(
+                    "centuria_user"
+                );
+
+                navigate(
+                    "/portal?mode=login",
+                    {
+                        replace: true
+                    }
+                );
+
+                return;
+            }
+
+            if (
+                !response.ok ||
+                data.success === false ||
+                !data.user
+            ) {
+                throw new Error(
+                    data.message ||
+                    "Unable to save your profile."
+                );
+            }
+
+            const serverUser =
+                data.user;
+
+            const permanentProfile = {
+                id:
+                    serverUser.id ||
+                    updatedProfile.id ||
+                    null,
+
+                name:
+                    serverUser.full_name ||
+                    updatedProfile.name,
+
+                email:
+                    serverUser.email ||
+                    updatedProfile.email,
+
+                phone:
+                    serverUser.phone ||
+                    "",
+
+                country:
+                    serverUser.country ||
+                    "Sri Lanka",
+
+                membership:
+                    updatedProfile.membership ||
+                    "Premium Member",
+
+                image:
+                    serverUser.profile_image ||
+                    ""
+            };
+
+            setProfile(
+                permanentProfile
+            );
+
+            setEditProfile(
+                permanentProfile
+            );
+
+            localStorage.setItem(
+                `centuria_profile_${permanentProfile.email}`,
+                JSON.stringify(
+                    permanentProfile
+                )
+            );
+
+            const storedUser =
+                getStoredUser();
+
             localStorage.setItem(
                 "centuria_user",
                 JSON.stringify({
-                    ...storedUser,
+                    ...(storedUser || {}),
+                    id:
+                        serverUser.id,
                     full_name:
-                        updatedProfile.name,
+                        serverUser.full_name,
+                    email:
+                        serverUser.email,
                     phone:
-                        updatedProfile.phone,
+                        serverUser.phone || "",
                     country:
-                        updatedProfile.country,
+                        serverUser.country || "Sri Lanka",
+                    country_code:
+                        serverUser.country_code || "",
+                    role:
+                        serverUser.role || "customer",
                     profile_image:
-                        updatedProfile.image
+                        serverUser.profile_image || ""
                 })
             );
+
+            setSaveSuccess(true);
+
+            window.setTimeout(
+                () => {
+                    setProfileOpen(false);
+                    setSaveSuccess(false);
+                },
+                900
+            );
+        } catch (error) {
+            setInfoModal(
+                error.message ||
+                "Unable to save your profile."
+            );
+        } finally {
+            setProfileSaving(false);
         }
-
-        setSaveSuccess(true);
-
-        window.setTimeout(
-            () => {
-                setProfileOpen(false);
-                setSaveSuccess(false);
-            },
-            900
-        );
     };
 
     const logout = () => {
@@ -651,6 +1215,10 @@ function CustomerDashboard() {
             "centuria_user"
         );
 
+        localStorage.removeItem(
+            "centuria_token"
+        );
+
         navigate(
             "/portal?mode=login",
             {
@@ -659,29 +1227,112 @@ function CustomerDashboard() {
         );
     };
 
-    const submitReview = (
+    const submitReview = async (
         event
     ) => {
         event.preventDefault();
 
-        if (!reviewText.trim()) {
+        const cleanReview =
+            reviewText.trim();
+
+        if (!cleanReview) {
             setReviewMessage(
                 "Please write your review first."
             );
+
             return;
         }
 
-        setReviewMessage(
-            `Thank you. Your ${rating}-star review has been received.`
-        );
+        try {
+            setReviewSaving(true);
+            setReviewMessage("");
 
-        setReviewText("");
+            const response =
+                await fetch(
+                    `${API_URL}/customer/reviews.php`,
+                    {
+                        method: "POST",
+                        headers: {
+                            ...getAuthHeaders(),
+                            "Content-Type":
+                                "application/json"
+                        },
+                        body:
+                            JSON.stringify({
+                                rating:
+                                    rating,
+                                review_text:
+                                    cleanReview
+                            })
+                    }
+                );
 
-        window.setTimeout(
-            () =>
-                setReviewMessage(""),
-            3500
-        );
+            const data =
+                await response.json();
+
+            if (
+                response.status ===
+                401
+            ) {
+                localStorage.removeItem(
+                    "centuria_logged_in"
+                );
+
+                localStorage.removeItem(
+                    "centuria_token"
+                );
+
+                localStorage.removeItem(
+                    "centuria_user"
+                );
+
+                navigate(
+                    "/portal?mode=login",
+                    {
+                        replace: true
+                    }
+                );
+
+                return;
+            }
+
+            if (
+                !response.ok ||
+                data.success === false
+            ) {
+                throw new Error(
+                    data.message ||
+                    "Unable to save your review."
+                );
+            }
+
+            setReviewMessage(
+                data.message ||
+                "Your review has been saved successfully."
+            );
+
+            await fetchReviews(
+                false
+            );
+
+            window.setTimeout(
+                () => {
+                    setReviewMessage(
+                        ""
+                    );
+                },
+                3500
+            );
+        } catch (error) {
+            setReviewMessage(
+                error.message ||
+                "Unable to save your review."
+            );
+        } finally {
+            setReviewSaving(
+                false
+            );
+        }
     };
 
     return (
@@ -1171,6 +1822,195 @@ function CustomerDashboard() {
                         )}
                     </section>
 
+                    <section
+                        id="customer-orders-section"
+                        className="customer-orders-section"
+                    >
+                        <div className="customer-orders-heading">
+                            <div>
+                                <span>
+                                    MY CENTURIA
+                                </span>
+
+                                <h2>
+                                    My Orders & Tracking
+                                </h2>
+
+                                <p>
+                                    View your real orders and follow every status update from the resort team.
+                                </p>
+                            </div>
+
+                            <button
+                                type="button"
+                                onClick={() =>
+                                    fetchOrders(true)
+                                }
+                            >
+                                <Clock3 size={16} />
+                                Refresh Orders
+                            </button>
+                        </div>
+
+                        {ordersError && (
+                            <div className="customer-orders-error">
+                                {ordersError}
+                            </div>
+                        )}
+
+                        {ordersLoading ? (
+                            <div className="customer-orders-empty">
+                                Loading your orders...
+                            </div>
+                        ) : orders.length === 0 ? (
+                            <div className="customer-orders-empty">
+                                <CalendarDays size={30} />
+                                <strong>
+                                    No orders yet
+                                </strong>
+                                <span>
+                                    Your room, dining, tour and spa requests will appear here after you place an order.
+                                </span>
+                            </div>
+                        ) : (
+                            <div className="customer-orders-grid">
+                                {orders.map(
+                                    (order) => {
+                                        const status =
+                                            String(
+                                                order.status ||
+                                                "pending"
+                                            ).toLowerCase();
+
+                                        const trackingIndex =
+                                            getTrackingIndex(
+                                                status
+                                            );
+
+                                        return (
+                                            <motion.article
+                                                key={order.id}
+                                                className="customer-order-card"
+                                                whileHover={{
+                                                    y: -5
+                                                }}
+                                            >
+                                                <div className="customer-order-card-top">
+                                                    <div>
+                                                        <span>
+                                                            {order.order_number ||
+                                                                `ORDER #${order.id}`}
+                                                        </span>
+
+                                                        <h3>
+                                                            {order.title ||
+                                                                order.order_type ||
+                                                                "Centuria Order"}
+                                                        </h3>
+                                                    </div>
+
+                                                    <span
+                                                        className={`customer-order-status ${status}`}
+                                                    >
+                                                        {status}
+                                                    </span>
+                                                </div>
+
+                                                <div className="customer-order-meta">
+                                                    <div>
+                                                        <small>
+                                                            Service
+                                                        </small>
+                                                        <strong>
+                                                            {order.order_type ||
+                                                                "Service"}
+                                                        </strong>
+                                                    </div>
+
+                                                    <div>
+                                                        <small>
+                                                            Date
+                                                        </small>
+                                                        <strong>
+                                                            {formatOrderDate(
+                                                                order.created_at
+                                                            )}
+                                                        </strong>
+                                                    </div>
+
+                                                    <div>
+                                                        <small>
+                                                            Amount
+                                                        </small>
+                                                        <strong>
+                                                            {formatOrderMoney(
+                                                                order.total_amount,
+                                                                order.currency
+                                                            )}
+                                                        </strong>
+                                                    </div>
+                                                </div>
+
+                                                {status === "declined" &&
+                                                    order.decline_reason && (
+                                                        <div className="customer-order-decline">
+                                                            <strong>
+                                                                Decline reason
+                                                            </strong>
+                                                            <span>
+                                                                {order.decline_reason}
+                                                            </span>
+                                                        </div>
+                                                    )}
+
+                                                {status !== "declined" &&
+                                                    status !== "cancelled" && (
+                                                        <div className="customer-mini-track">
+                                                            {TRACKING_STEPS.map(
+                                                                (step, index) => (
+                                                                    <span
+                                                                        key={step}
+                                                                        className={
+                                                                            index <=
+                                                                            trackingIndex
+                                                                                ? "active"
+                                                                                : ""
+                                                                        }
+                                                                    />
+                                                                )
+                                                            )}
+                                                        </div>
+                                                    )}
+
+                                                <div className="customer-order-card-footer">
+                                                    <span>
+                                                        {order.assigned_admin_name
+                                                            ? `Handled by ${order.assigned_admin_name}`
+                                                            : "Waiting for resort team"}
+                                                    </span>
+
+                                                    <button
+                                                        type="button"
+                                                        onClick={() =>
+                                                            setSelectedOrder(
+                                                                order
+                                                            )
+                                                        }
+                                                    >
+                                                        Track Order
+                                                        <ChevronRight
+                                                            size={15}
+                                                        />
+                                                    </button>
+                                                </div>
+                                            </motion.article>
+                                        );
+                                    }
+                                )}
+                            </div>
+                        )}
+                    </section>
+
                     <section className="customer-review-section">
                         <div className="review-heading">
                             <span>
@@ -1184,52 +2024,107 @@ function CustomerDashboard() {
 
                         <div className="review-layout">
                             <div className="review-list">
-                                {reviews.map(
-                                    (review) => (
-                                        <article
-                                            key={review.id}
-                                            className="review-card"
-                                        >
-                                            <div className="review-avatar">
-                                                {review.name.charAt(
-                                                    0
-                                                )}
-                                            </div>
+                                {reviewsLoading ? (
+                                    <div className="review-empty">
+                                        Loading real guest reviews...
+                                    </div>
+                                ) : realReviews.length === 0 ? (
+                                    <div className="review-empty">
+                                        <Star size={25} />
 
-                                            <div>
-                                                <div className="review-card-top">
-                                                    <strong>
-                                                        {review.name}
-                                                    </strong>
+                                        <strong>
+                                            No reviews yet
+                                        </strong>
 
-                                                    <div className="review-stars">
-                                                        {Array.from({
-                                                            length:
-                                                                review.rating
-                                                        }).map(
-                                                            (
-                                                                _,
-                                                                index
-                                                            ) => (
-                                                                <Star
-                                                                    key={
-                                                                        index
-                                                                    }
-                                                                    size={
-                                                                        13
-                                                                    }
-                                                                    fill="currentColor"
-                                                                />
-                                                            )
-                                                        )}
-                                                    </div>
+                                        <span>
+                                            Be the first Centuria guest to share an experience.
+                                        </span>
+                                    </div>
+                                ) : (
+                                    realReviews.map(
+                                        (review) => (
+                                            <article
+                                                key={review.id}
+                                                className={
+                                                    `review-card ${
+                                                        review.is_mine
+                                                            ? "my-review-card"
+                                                            : ""
+                                                    }`
+                                                }
+                                            >
+                                                <div className="review-avatar">
+                                                    {review.profile_image ? (
+                                                        <img
+                                                            src={
+                                                                review.profile_image
+                                                            }
+                                                            alt={
+                                                                review.name
+                                                            }
+                                                        />
+                                                    ) : (
+                                                        review.name
+                                                            ?.charAt(0)
+                                                            ?.toUpperCase() ||
+                                                        "C"
+                                                    )}
                                                 </div>
 
-                                                <p>
-                                                    {review.text}
-                                                </p>
-                                            </div>
-                                        </article>
+                                                <div>
+                                                    <div className="review-card-top">
+                                                        <div className="review-name-row">
+                                                            <strong>
+                                                                {review.name}
+                                                            </strong>
+
+                                                            {review.is_mine && (
+                                                                <span className="review-you-badge">
+                                                                    Your Review
+                                                                </span>
+                                                            )}
+                                                        </div>
+
+                                                        <div className="review-stars">
+                                                            {[1, 2, 3, 4, 5].map(
+                                                                (
+                                                                    star
+                                                                ) => (
+                                                                    <Star
+                                                                        key={
+                                                                            star
+                                                                        }
+                                                                        size={
+                                                                            13
+                                                                        }
+                                                                        fill={
+                                                                            star <=
+                                                                            review.rating
+                                                                                ? "currentColor"
+                                                                                : "none"
+                                                                        }
+                                                                    />
+                                                                )
+                                                            )}
+                                                        </div>
+                                                    </div>
+
+                                                    <p>
+                                                        {
+                                                            review.review_text
+                                                        }
+                                                    </p>
+
+                                                    {review.country && (
+                                                        <small className="review-country">
+                                                            {
+                                                                review.country
+                                                            }
+                                                        </small>
+                                                    )}
+                                                </div>
+                                            </article>
+                                        )
                                     )
                                 )}
                             </div>
@@ -1297,9 +2192,20 @@ function CustomerDashboard() {
                                 <button
                                     type="submit"
                                     className="submit-review-button"
+                                    disabled={
+                                        reviewSaving
+                                    }
                                 >
                                     <Send size={16} />
-                                    Submit Review
+
+                                    {reviewSaving
+                                        ? "Saving..."
+                                        : realReviews.some(
+                                            (review) =>
+                                                review.is_mine
+                                        )
+                                            ? "Update Review"
+                                            : "Submit Review"}
                                 </button>
                             </form>
                         </div>
@@ -1551,8 +2457,8 @@ function CustomerDashboard() {
                             <button
                                 type="button"
                                 onClick={() =>
-                                    showComingSoon(
-                                        "My Bookings"
+                                    handleNavigation(
+                                        "bookings"
                                     )
                                 }
                             >
@@ -1768,6 +2674,214 @@ function CustomerDashboard() {
                     </div>
                 </aside>
             </main>
+
+            <AnimatePresence>
+                {selectedOrder && (
+                    <motion.div
+                        className="customer-tracking-backdrop"
+                        initial={{ opacity: 0 }}
+                        animate={{ opacity: 1 }}
+                        exit={{ opacity: 0 }}
+                        onClick={() =>
+                            setSelectedOrder(null)
+                        }
+                    >
+                        <motion.div
+                            className="customer-tracking-modal"
+                            initial={{
+                                opacity: 0,
+                                y: 25,
+                                scale: 0.96
+                            }}
+                            animate={{
+                                opacity: 1,
+                                y: 0,
+                                scale: 1
+                            }}
+                            exit={{
+                                opacity: 0,
+                                y: 20,
+                                scale: 0.96
+                            }}
+                            onClick={(event) =>
+                                event.stopPropagation()
+                            }
+                        >
+                            <button
+                                type="button"
+                                className="customer-tracking-close"
+                                onClick={() =>
+                                    setSelectedOrder(null)
+                                }
+                            >
+                                <X size={19} />
+                            </button>
+
+                            <span className="customer-tracking-kicker">
+                                LIVE ORDER TRACKING
+                            </span>
+
+                            <h2>
+                                {selectedOrder.title ||
+                                    selectedOrder.order_type ||
+                                    "Centuria Order"}
+                            </h2>
+
+                            <div className="customer-tracking-summary">
+                                <div>
+                                    <small>
+                                        Order
+                                    </small>
+                                    <strong>
+                                        {selectedOrder.order_number ||
+                                            `#${selectedOrder.id}`}
+                                    </strong>
+                                </div>
+
+                                <div>
+                                    <small>
+                                        Amount
+                                    </small>
+                                    <strong>
+                                        {formatOrderMoney(
+                                            selectedOrder.total_amount,
+                                            selectedOrder.currency
+                                        )}
+                                    </strong>
+                                </div>
+
+                                <div>
+                                    <small>
+                                        Created
+                                    </small>
+                                    <strong>
+                                        {formatOrderDate(
+                                            selectedOrder.created_at
+                                        )}
+                                    </strong>
+                                </div>
+                            </div>
+
+                            {String(
+                                selectedOrder.status ||
+                                "pending"
+                            ).toLowerCase() ===
+                            "declined" ? (
+                                <div className="customer-tracking-declined">
+                                    <strong>
+                                        Request Declined
+                                    </strong>
+                                    <p>
+                                        {selectedOrder.decline_reason ||
+                                            "Please contact Centuria support for more information."}
+                                    </p>
+                                </div>
+                            ) : (
+                                <div className="customer-tracking-timeline">
+                                    {TRACKING_STEPS.map(
+                                        (step, index) => {
+                                            const currentIndex =
+                                                getTrackingIndex(
+                                                    selectedOrder.status
+                                                );
+
+                                            const complete =
+                                                index <=
+                                                currentIndex;
+
+                                            return (
+                                                <div
+                                                    key={step}
+                                                    className={
+                                                        complete
+                                                            ? "complete"
+                                                            : ""
+                                                    }
+                                                >
+                                                    <span>
+                                                        {complete ? (
+                                                            <CheckCircle2
+                                                                size={18}
+                                                            />
+                                                        ) : (
+                                                            <Clock3
+                                                                size={18}
+                                                            />
+                                                        )}
+                                                    </span>
+
+                                                    <div>
+                                                        <strong>
+                                                            {step === "pending"
+                                                                ? "Request Sent"
+                                                                : step === "accepted"
+                                                                ? "Accepted"
+                                                                : step === "confirmed"
+                                                                ? "Confirmed"
+                                                                : step === "processing"
+                                                                ? "Processing / Active"
+                                                                : "Completed"}
+                                                        </strong>
+
+                                                        <small>
+                                                            {complete
+                                                                ? "Completed stage"
+                                                                : "Waiting for update"}
+                                                        </small>
+                                                    </div>
+                                                </div>
+                                            );
+                                        }
+                                    )}
+                                </div>
+                            )}
+
+                            {Array.isArray(
+                                selectedOrder.history
+                            ) &&
+                                selectedOrder.history.length >
+                                    0 && (
+                                    <div className="customer-order-history">
+                                        <h3>
+                                            Status History
+                                        </h3>
+
+                                        {selectedOrder.history.map(
+                                            (history, index) => (
+                                                <div
+                                                    key={
+                                                        history.id ||
+                                                        `${history.status}-${index}`
+                                                    }
+                                                >
+                                                    <span />
+
+                                                    <div>
+                                                        <strong>
+                                                            {history.status}
+                                                        </strong>
+
+                                                        <small>
+                                                            {formatOrderDate(
+                                                                history.created_at
+                                                            )}
+                                                        </small>
+
+                                                        {history.note && (
+                                                            <p>
+                                                                {history.note}
+                                                            </p>
+                                                        )}
+                                                    </div>
+                                                </div>
+                                            )
+                                        )}
+                                    </div>
+                                )}
+                        </motion.div>
+                    </motion.div>
+                )}
+            </AnimatePresence>
 
             <AnimatePresence>
                 {infoModal && (
@@ -2026,6 +3140,9 @@ function CustomerDashboard() {
                                     <button
                                         type="button"
                                         className="cancel-profile-button"
+                                        disabled={
+                                            profileSaving
+                                        }
                                         onClick={() =>
                                             setProfileOpen(
                                                 false
@@ -2038,8 +3155,13 @@ function CustomerDashboard() {
                                     <button
                                         type="submit"
                                         className="save-profile-button"
+                                        disabled={
+                                            profileSaving
+                                        }
                                     >
-                                        Save Changes
+                                        {profileSaving
+                                            ? "Saving..."
+                                            : "Save Changes"}
                                     </button>
                                 </div>
                             </form>

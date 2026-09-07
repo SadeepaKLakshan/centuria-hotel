@@ -4,389 +4,992 @@ declare(strict_types=1);
 
 require_once __DIR__ . '/../config/cors.php';
 require_once __DIR__ . '/../config/database.php';
-require_once __DIR__ . '/../config/auth-middleware.php';
+require_once __DIR__ . '/../auth/auth-middleware.php';
 
 applyCors();
 
-function respond(
-    bool $success,
-    string $message,
-    array $extra = [],
-    int $statusCode = 200
+header(
+    'Content-Type: application/json; charset=utf-8'
+);
+
+
+function orderResponse(
+    int $status,
+    array $payload
 ): never {
-    http_response_code($statusCode);
+    http_response_code(
+        $status
+    );
 
     echo json_encode(
-        array_merge(
-            [
-                'success' => $success,
-                'message' => $message
-            ],
-            $extra
-        ),
-        JSON_UNESCAPED_SLASHES
+        $payload,
+        JSON_UNESCAPED_SLASHES |
+        JSON_UNESCAPED_UNICODE
     );
 
     exit;
 }
 
-if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
-    respond(
-        false,
-        'Only POST requests are allowed.',
-        [],
-        405
+
+function tableExists(
+    PDO $pdo,
+    string $table
+): bool {
+    $statement =
+        $pdo->prepare(
+            'SELECT COUNT(*)
+             FROM information_schema.tables
+             WHERE table_schema = DATABASE()
+             AND table_name = :table'
+        );
+
+    $statement->execute([
+        'table' =>
+            $table
+    ]);
+
+    return (
+        (int)$statement->fetchColumn() >
+        0
     );
 }
 
-try {
-    $user = authenticateUser();
 
-    requireRole(
-        $user,
-        ['customer']
-    );
-
-    $input = json_decode(
-        file_get_contents('php://input'),
-        true
-    );
-
-    if (!is_array($input)) {
-        respond(
-            false,
-            'Invalid request data.',
-            [],
-            400
+function tableColumns(
+    PDO $pdo,
+    string $table
+): array {
+    $statement =
+        $pdo->query(
+            "SHOW COLUMNS FROM `{$table}`"
         );
+
+    $columns = [];
+
+    foreach (
+        $statement->fetchAll(
+            PDO::FETCH_ASSOC
+        ) as $column
+    ) {
+        $columns[
+            $column[
+                'Field'
+            ]
+        ] =
+            $column;
     }
 
-    $orderType = strtolower(
-        trim((string)($input['order_type'] ?? ''))
-    );
+    return $columns;
+}
 
-    $title = trim(
-        (string)($input['title'] ?? '')
-    );
 
-    $description = trim(
-        (string)($input['description'] ?? '')
-    );
-
-    $customerNote = trim(
-        (string)($input['customer_note'] ?? '')
-    );
-
-    $requestedDate = trim(
-        (string)($input['requested_date'] ?? '')
-    );
-
-    $requestedTime = trim(
-        (string)($input['requested_time'] ?? '')
-    );
-
-    $currency = strtoupper(
-        trim((string)($input['currency'] ?? 'LKR'))
-    );
-
-    $items = $input['items'] ?? [];
-
-    $allowedTypes = [
-        'room',
-        'food',
-        'spa',
-        'tour',
-        'transport',
-        'service',
-        'other'
-    ];
-
-    if (!in_array($orderType, $allowedTypes, true)) {
-        respond(
-            false,
-            'Invalid order type.',
-            [],
-            422
-        );
-    }
-
-    if ($title === '') {
-        respond(
-            false,
-            'Order title is required.',
-            [],
-            422
-        );
-    }
-
-    if (!is_array($items) || count($items) === 0) {
-        respond(
-            false,
-            'At least one order item is required.',
-            [],
-            422
-        );
-    }
-
-    $pdo = getDatabaseConnection();
-
-    $pdo->beginTransaction();
-
-    $orderNumber =
-        'CEN-' .
-        date('Ymd') .
-        '-' .
-        strtoupper(
-            bin2hex(
-                random_bytes(3)
+function normalizeOrderType(
+    string $value
+): string {
+    $value =
+        strtolower(
+            trim(
+                $value
             )
         );
 
-    $totalAmount = 0.0;
-
-    foreach ($items as $item) {
-        $quantity = max(
-            1,
-            (int)($item['quantity'] ?? 1)
-        );
-
-        $unitPrice = max(
-            0,
-            (float)($item['unit_price'] ?? 0)
-        );
-
-        $totalAmount +=
-            $quantity * $unitPrice;
+    if (
+        str_contains(
+            $value,
+            'food'
+        ) ||
+        str_contains(
+            $value,
+            'dining'
+        ) ||
+        str_contains(
+            $value,
+            'restaurant'
+        )
+    ) {
+        return 'dining';
     }
 
-    $insertOrder = $pdo->prepare(
-        'INSERT INTO customer_orders
-        (
-            order_number,
-            customer_id,
-            order_type,
-            title,
-            description,
-            total_amount,
-            currency,
-            status,
-            payment_status,
-            customer_note,
-            requested_date,
-            requested_time,
-            created_at,
-            updated_at
+    if (
+        str_contains(
+            $value,
+            'room'
         )
-        VALUES
-        (
-            :order_number,
-            :customer_id,
-            :order_type,
-            :title,
-            :description,
-            :total_amount,
-            :currency,
-            :status,
-            :payment_status,
-            :customer_note,
-            :requested_date,
-            :requested_time,
-            NOW(),
-            NOW()
-        )'
-    );
+    ) {
+        return 'room';
+    }
 
-    $insertOrder->execute([
-        'order_number' => $orderNumber,
-        'customer_id' => $user['id'],
-        'order_type' => $orderType,
-        'title' => $title,
-        'description' =>
-            $description !== ''
-                ? $description
-                : null,
-        'total_amount' => $totalAmount,
-        'currency' => $currency,
-        'status' => 'pending',
-        'payment_status' => 'unpaid',
-        'customer_note' =>
-            $customerNote !== ''
-                ? $customerNote
-                : null,
-        'requested_date' =>
-            $requestedDate !== ''
-                ? $requestedDate
-                : null,
-        'requested_time' =>
-            $requestedTime !== ''
-                ? $requestedTime
-                : null
-    ]);
-
-    $orderId = (int)$pdo->lastInsertId();
-
-    $insertItem = $pdo->prepare(
-        'INSERT INTO order_items
-        (
-            order_id,
-            item_name,
-            item_description,
-            quantity,
-            unit_price,
-            subtotal,
-            created_at
+    if (
+        str_contains(
+            $value,
+            'tour'
+        ) ||
+        str_contains(
+            $value,
+            'travel'
         )
-        VALUES
-        (
-            :order_id,
-            :item_name,
-            :item_description,
-            :quantity,
-            :unit_price,
-            :subtotal,
-            NOW()
-        )'
-    );
+    ) {
+        return 'tour';
+    }
 
-    foreach ($items as $item) {
-        $itemName = trim(
-            (string)($item['item_name'] ?? '')
+    if (
+        str_contains(
+            $value,
+            'spa'
+        ) ||
+        str_contains(
+            $value,
+            'massage'
+        )
+    ) {
+        return 'spa';
+    }
+
+    return $value !== ''
+        ? $value
+        : 'service';
+}
+
+
+if (
+    $_SERVER[
+        'REQUEST_METHOD'
+    ] !==
+    'POST'
+) {
+    orderResponse(
+        405,
+        [
+            'success' =>
+                false,
+
+            'message' =>
+                'Method not allowed.'
+        ]
+    );
+}
+
+
+try {
+    $customer =
+        requireCustomer();
+
+    $pdo =
+        getDatabaseConnection();
+
+
+    if (
+        !tableExists(
+            $pdo,
+            'customer_orders'
+        )
+    ) {
+        orderResponse(
+            500,
+            [
+                'success' =>
+                    false,
+
+                'message' =>
+                    'Customer orders table is not available.'
+            ]
+        );
+    }
+
+
+    $input =
+        json_decode(
+            file_get_contents(
+                'php://input'
+            ),
+            true
         );
 
-        if ($itemName === '') {
-            throw new RuntimeException(
-                'Each order item requires a name.'
+
+    if (
+        !is_array(
+            $input
+        )
+    ) {
+        orderResponse(
+            400,
+            [
+                'success' =>
+                    false,
+
+                'message' =>
+                    'Invalid JSON body.'
+            ]
+        );
+    }
+
+
+    $orderType =
+        normalizeOrderType(
+            (string)(
+                $input[
+                    'order_type'
+                ] ??
+                $input[
+                    'service_type'
+                ] ??
+                ''
+            )
+        );
+
+
+    $title =
+        trim(
+            (string)(
+                $input[
+                    'title'
+                ] ??
+                'Centuria Booking'
+            )
+        );
+
+
+    $description =
+        trim(
+            (string)(
+                $input[
+                    'description'
+                ] ??
+                ''
+            )
+        );
+
+
+    $totalAmount =
+        (float)(
+            $input[
+                'total_amount'
+            ] ??
+            $input[
+                'amount'
+            ] ??
+            $input[
+                'total'
+            ] ??
+            0
+        );
+
+
+    $currency =
+        strtoupper(
+            trim(
+                (string)(
+                    $input[
+                        'currency'
+                    ] ??
+                    'LKR'
+                )
+            )
+        );
+
+
+    $paymentMethod =
+        trim(
+            (string)(
+                $input[
+                    'payment_method'
+                ] ??
+                'Card'
+            )
+        );
+
+
+    $paymentReference =
+        trim(
+            (string)(
+                $input[
+                    'payment_reference'
+                ] ??
+                ''
+            )
+        );
+
+
+    $paymentLast4 =
+        preg_replace(
+            '/\D/',
+            '',
+            (string)(
+                $input[
+                    'payment_last4'
+                ] ??
+                ''
+            )
+        );
+
+
+    $paymentLast4 =
+        substr(
+            $paymentLast4,
+            -4
+        );
+
+
+    if (
+        $title === ''
+    ) {
+        orderResponse(
+            422,
+            [
+                'success' =>
+                    false,
+
+                'message' =>
+                    'Booking title is required.'
+            ]
+        );
+    }
+
+
+    if (
+        $totalAmount <=
+        0
+    ) {
+        orderResponse(
+            422,
+            [
+                'success' =>
+                    false,
+
+                'message' =>
+                    'A valid booking amount is required.'
+            ]
+        );
+    }
+
+
+    $profileStatement =
+        $pdo->prepare(
+            'SELECT
+                id,
+                full_name,
+                email,
+                phone
+             FROM users
+             WHERE id = :id
+             LIMIT 1'
+        );
+
+
+    $profileStatement->execute([
+        'id' =>
+            (int)$customer[
+                'id'
+            ]
+    ]);
+
+
+    $profile =
+        $profileStatement->fetch(
+            PDO::FETCH_ASSOC
+        ) ?: [];
+
+
+    $orderNumber =
+        strtoupper(
+            substr(
+                $orderType,
+                0,
+                4
+            )
+        ) .
+        '-' .
+        date(
+            'YmdHis'
+        ) .
+        '-' .
+        random_int(
+            100,
+            999
+        );
+
+
+    $details =
+        $input[
+            'details'
+        ] ??
+        [];
+
+
+    if (
+        !is_array(
+            $details
+        )
+    ) {
+        $details = [];
+    }
+
+
+    $details[
+        'payment'
+    ] = array_merge(
+        is_array(
+            $details[
+                'payment'
+            ] ??
+            null
+        )
+            ? $details[
+                  'payment'
+              ]
+            : [],
+        [
+            'method' =>
+                $paymentMethod,
+
+            'reference' =>
+                $paymentReference,
+
+            'last4' =>
+                $paymentLast4
+        ]
+    );
+
+
+    $detailsJson =
+        json_encode(
+            $details,
+            JSON_UNESCAPED_SLASHES |
+            JSON_UNESCAPED_UNICODE
+        );
+
+
+    $columns =
+        tableColumns(
+            $pdo,
+            'customer_orders'
+        );
+
+
+    $values = [];
+
+
+    $addValue =
+        function (
+            string $column,
+            mixed $value
+        ) use (
+            &$values,
+            $columns
+        ): void {
+            if (
+                isset(
+                    $columns[
+                        $column
+                    ]
+                )
+            ) {
+                $values[
+                    $column
+                ] =
+                    $value;
+            }
+        };
+
+
+    $userId =
+        (int)$customer[
+            'id'
+        ];
+
+
+    $addValue(
+        'user_id',
+        $userId
+    );
+
+    $addValue(
+        'customer_id',
+        $userId
+    );
+
+    $addValue(
+        'order_number',
+        $orderNumber
+    );
+
+    $addValue(
+        'order_type',
+        $orderType
+    );
+
+    $addValue(
+        'service_type',
+        $orderType
+    );
+
+    $addValue(
+        'type',
+        $orderType
+    );
+
+    $addValue(
+        'title',
+        $title
+    );
+
+    $addValue(
+        'order_title',
+        $title
+    );
+
+    $addValue(
+        'description',
+        $description
+    );
+
+    $addValue(
+        'notes',
+        $description
+    );
+
+    $addValue(
+        'special_request',
+        $description
+    );
+
+    $addValue(
+        'total_amount',
+        $totalAmount
+    );
+
+    $addValue(
+        'amount',
+        $totalAmount
+    );
+
+    $addValue(
+        'total',
+        $totalAmount
+    );
+
+    $addValue(
+        'currency',
+        $currency
+    );
+
+    $addValue(
+        'status',
+        'pending'
+    );
+
+    $addValue(
+        'payment_method',
+        $paymentMethod
+    );
+
+    $addValue(
+        'payment_reference',
+        $paymentReference
+    );
+
+    $addValue(
+        'payment_last4',
+        $paymentLast4
+    );
+
+    $addValue(
+        'customer_name',
+        $profile[
+            'full_name'
+        ] ??
+        $customer[
+            'full_name'
+        ] ??
+        'Customer'
+    );
+
+    $addValue(
+        'customer_email',
+        $profile[
+            'email'
+        ] ??
+        $customer[
+            'email'
+        ] ??
+        ''
+    );
+
+    $addValue(
+        'customer_phone',
+        $profile[
+            'phone'
+        ] ??
+        ''
+    );
+
+    $addValue(
+        'details_json',
+        $detailsJson
+    );
+
+    $addValue(
+        'metadata',
+        $detailsJson
+    );
+
+    $addValue(
+        'meta_json',
+        $detailsJson
+    );
+
+
+    if (
+        isset(
+            $columns[
+                'payment_status'
+            ]
+        )
+    ) {
+        $type =
+            strtolower(
+                (string)$columns[
+                    'payment_status'
+                ][
+                    'Type'
+                ]
             );
+
+
+        if (
+            str_contains(
+                $type,
+                "'paid'"
+            )
+        ) {
+            $values[
+                'payment_status'
+            ] =
+                'paid';
+        } elseif (
+            str_contains(
+                $type,
+                "'completed'"
+            )
+        ) {
+            $values[
+                'payment_status'
+            ] =
+                'completed';
+        } elseif (
+            str_contains(
+                $type,
+                "'pending'"
+            )
+        ) {
+            $values[
+                'payment_status'
+            ] =
+                'pending';
+        }
+    }
+
+
+    if (
+        !isset(
+            $values[
+                'user_id'
+            ]
+        ) &&
+        !isset(
+            $values[
+                'customer_id'
+            ]
+        )
+    ) {
+        orderResponse(
+            500,
+            [
+                'success' =>
+                    false,
+
+                'message' =>
+                    'The orders table does not contain a customer reference column.'
+            ]
+        );
+    }
+
+
+    if (
+        empty(
+            $values
+        )
+    ) {
+        orderResponse(
+            500,
+            [
+                'success' =>
+                    false,
+
+                'message' =>
+                    'No compatible order columns were found.'
+            ]
+        );
+    }
+
+
+    $pdo->beginTransaction();
+
+
+    $insertColumns =
+        array_keys(
+            $values
+        );
+
+
+    $placeholders =
+        array_map(
+            static fn (
+                string $column
+            ): string =>
+                ':' .
+                $column,
+            $insertColumns
+        );
+
+
+    $sql =
+        'INSERT INTO customer_orders (' .
+        implode(
+            ', ',
+            array_map(
+                static fn (
+                    string $column
+                ): string =>
+                    "`{$column}`",
+                $insertColumns
+            )
+        ) .
+        ') VALUES (' .
+        implode(
+            ', ',
+            $placeholders
+        ) .
+        ')';
+
+
+    $insert =
+        $pdo->prepare(
+            $sql
+        );
+
+
+    $insert->execute(
+        $values
+    );
+
+
+    $orderId =
+        (int)$pdo->lastInsertId();
+
+
+    if (
+        tableExists(
+            $pdo,
+            'order_status_history'
+        )
+    ) {
+        $historyColumns =
+            tableColumns(
+                $pdo,
+                'order_status_history'
+            );
+
+
+        $historyValues =
+            [];
+
+
+        if (
+            isset(
+                $historyColumns[
+                    'order_id'
+                ]
+            )
+        ) {
+            $historyValues[
+                'order_id'
+            ] =
+                $orderId;
         }
 
-        $itemDescription = trim(
-            (string)($item['item_description'] ?? '')
-        );
 
-        $quantity = max(
-            1,
-            (int)($item['quantity'] ?? 1)
-        );
+        if (
+            isset(
+                $historyColumns[
+                    'status'
+                ]
+            )
+        ) {
+            $historyValues[
+                'status'
+            ] =
+                'pending';
+        }
 
-        $unitPrice = max(
-            0,
-            (float)($item['unit_price'] ?? 0)
-        );
 
-        $subtotal =
-            $quantity * $unitPrice;
+        if (
+            isset(
+                $historyColumns[
+                    'note'
+                ]
+            )
+        ) {
+            $historyValues[
+                'note'
+            ] =
+                'Payment submitted. Waiting for admin confirmation.';
+        }
 
-        $insertItem->execute([
-            'order_id' => $orderId,
-            'item_name' => $itemName,
-            'item_description' =>
-                $itemDescription !== ''
-                    ? $itemDescription
-                    : null,
-            'quantity' => $quantity,
-            'unit_price' => $unitPrice,
-            'subtotal' => $subtotal
-        ]);
+
+        if (
+            isset(
+                $historyColumns[
+                    'notes'
+                ]
+            )
+        ) {
+            $historyValues[
+                'notes'
+            ] =
+                'Payment submitted. Waiting for admin confirmation.';
+        }
+
+
+        if (
+            $historyValues
+        ) {
+            $historyFields =
+                array_keys(
+                    $historyValues
+                );
+
+
+            $historySql =
+                'INSERT INTO order_status_history (' .
+                implode(
+                    ', ',
+                    array_map(
+                        static fn (
+                            string $column
+                        ): string =>
+                            "`{$column}`",
+                        $historyFields
+                    )
+                ) .
+                ') VALUES (' .
+                implode(
+                    ', ',
+                    array_map(
+                        static fn (
+                            string $column
+                        ): string =>
+                            ':' .
+                            $column,
+                        $historyFields
+                    )
+                ) .
+                ')';
+
+
+            $historyInsert =
+                $pdo->prepare(
+                    $historySql
+                );
+
+
+            $historyInsert->execute(
+                $historyValues
+            );
+        }
     }
 
-    $insertHistory = $pdo->prepare(
-        'INSERT INTO order_status_history
-        (
-            order_id,
-            old_status,
-            new_status,
-            changed_by,
-            note,
-            created_at
-        )
-        VALUES
-        (
-            :order_id,
-            NULL,
-            :new_status,
-            :changed_by,
-            :note,
-            NOW()
-        )'
-    );
-
-    $insertHistory->execute([
-        'order_id' => $orderId,
-        'new_status' => 'pending',
-        'changed_by' => $user['id'],
-        'note' => 'Order created by customer.'
-    ]);
-
-    $notification = $pdo->prepare(
-        'INSERT INTO admin_notifications
-        (
-            user_id,
-            type,
-            title,
-            message,
-            reference_type,
-            reference_id,
-            is_read,
-            created_at
-        )
-        VALUES
-        (
-            NULL,
-            :type,
-            :title,
-            :message,
-            :reference_type,
-            :reference_id,
-            0,
-            NOW()
-        )'
-    );
-
-    $notification->execute([
-        'type' => 'new_order',
-        'title' => 'New Customer Order',
-        'message' =>
-            $user['full_name'] .
-            ' created order ' .
-            $orderNumber . '.',
-        'reference_type' => 'order',
-        'reference_id' => $orderId
-    ]);
 
     $pdo->commit();
 
-    respond(
-        true,
-        'Order created successfully.',
+
+    $select =
+        $pdo->prepare(
+            'SELECT *
+             FROM customer_orders
+             WHERE id = :id
+             LIMIT 1'
+        );
+
+
+    $select->execute([
+        'id' =>
+            $orderId
+    ]);
+
+
+    $order =
+        $select->fetch(
+            PDO::FETCH_ASSOC
+        ) ?: [
+            'id' =>
+                $orderId,
+
+            'order_number' =>
+                $orderNumber,
+
+            'status' =>
+                'pending'
+        ];
+
+
+    orderResponse(
+        201,
         [
-            'order' => [
-                'id' => $orderId,
-                'order_number' => $orderNumber,
-                'status' => 'pending',
-                'total_amount' => $totalAmount,
-                'currency' => $currency
-            ]
-        ],
-        201
+            'success' =>
+                true,
+
+            'message' =>
+                'Payment submitted and booking created successfully.',
+
+            'order_id' =>
+                $orderId,
+
+            'order_number' =>
+                $order[
+                    'order_number'
+                ] ??
+                $orderNumber,
+
+            'order' =>
+                $order
+        ]
     );
-} catch (Throwable $e) {
+} catch (
+    Throwable $error
+) {
     if (
-        isset($pdo) &&
+        isset(
+            $pdo
+        ) &&
         $pdo instanceof PDO &&
         $pdo->inTransaction()
     ) {
         $pdo->rollBack();
     }
 
-    error_log(
-        'Create order error: ' .
-        $e->getMessage()
-    );
 
-    respond(
-        false,
-        'Order could not be created.',
-        [],
-        500
+    orderResponse(
+        500,
+        [
+            'success' =>
+                false,
+
+            'message' =>
+                'Unable to create the booking.',
+
+            'error' =>
+                $error->getMessage()
+        ]
     );
 }
