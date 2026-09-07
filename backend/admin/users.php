@@ -19,18 +19,19 @@ if (
 
     echo json_encode([
         'success' => false,
-        'message' => 'Method not allowed.'
+        'message' =>
+            'Method not allowed.'
     ]);
 
     exit;
 }
 
 try {
-    $authUser = requireRole([
-        'admin'
-    ]);
+    $authUser =
+        requireAdmin();
 
-    $pdo = getDatabaseConnection();
+    $pdo =
+        getDatabaseConnection();
 
     $sql = "
         SELECT
@@ -62,66 +63,105 @@ try {
             id DESC
     ";
 
-    $statement = $pdo->prepare($sql);
+    $statement =
+        $pdo->prepare($sql);
 
     $statement->execute();
 
-    $users = $statement->fetchAll(
-        PDO::FETCH_ASSOC
-    );
+    $users =
+        $statement->fetchAll(
+            PDO::FETCH_ASSOC
+        );
 
     $formattedUsers = [];
 
     foreach ($users as $user) {
         $formattedUsers[] = [
-            'id' => (int)$user['id'],
+            'id' =>
+                (int)$user['id'],
 
             'full_name' =>
-                (string)($user['full_name'] ?? ''),
+                (string)(
+                    $user['full_name'] ??
+                    ''
+                ),
 
             'email' =>
-                (string)($user['email'] ?? ''),
+                (string)(
+                    $user['email'] ??
+                    ''
+                ),
 
             'phone' =>
-                $user['phone'] ?? null,
+                $user['phone'] ??
+                null,
 
             'country_code' =>
-                $user['country_code'] ?? null,
+                $user['country_code'] ??
+                null,
 
             'country' =>
-                $user['country'] ?? null,
+                $user['country'] ??
+                null,
 
             'role' =>
                 strtolower(
-                    (string)($user['role'] ?? 'customer')
+                    (string)(
+                        $user['role'] ??
+                        'customer'
+                    )
                 ),
 
             'is_verified' =>
-                (int)($user['is_verified'] ?? 0),
+                (int)(
+                    $user[
+                        'is_verified'
+                    ] ?? 0
+                ),
 
             'account_status' =>
                 (string)(
-                    $user['account_status'] ??
+                    $user[
+                        'account_status'
+                    ] ??
                     'active'
                 ),
 
             'profile_image' =>
-                $user['profile_image'] ?? null,
+                $user[
+                    'profile_image'
+                ] ??
+                null,
 
             'email_verified_at' =>
-                $user['email_verified_at'] ?? null,
+                $user[
+                    'email_verified_at'
+                ] ??
+                null,
 
             'phone_verified_at' =>
-                $user['phone_verified_at'] ?? null,
+                $user[
+                    'phone_verified_at'
+                ] ??
+                null,
 
             'last_login_at' =>
-                $user['last_login_at'] ?? null,
+                $user[
+                    'last_login_at'
+                ] ??
+                null,
 
             'created_at' =>
-                $user['created_at'] ?? null,
+                $user[
+                    'created_at'
+                ] ??
+                null,
 
             'updated_at' =>
-                $user['updated_at'] ?? null
+                $user[
+                    'updated_at'
+                ] ??
+                null
         ];
     }
 
@@ -132,7 +172,9 @@ try {
             (int)$authUser['id'],
 
         'total' =>
-            count($formattedUsers),
+            count(
+                $formattedUsers
+            ),
 
         'users' =>
             $formattedUsers
@@ -147,8 +189,10 @@ try {
 
     echo json_encode([
         'success' => false,
+
         'message' =>
             'Unable to load user accounts.',
+
         'error' =>
             $e->getMessage()
     ]);
