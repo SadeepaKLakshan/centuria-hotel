@@ -7,109 +7,50 @@ require_once __DIR__ . '/../config/database.php';
 require_once __DIR__ . '/../auth/auth-middleware.php';
 
 applyCors();
-
 header('Content-Type: application/json; charset=utf-8');
 
-if (
-    ($_SERVER['REQUEST_METHOD'] ?? '')
-    !== 'GET'
-) {
-    http_response_code(405);
-
-    echo json_encode([
-        'success' => false,
-        'message' =>
-            'Method not allowed.'
-    ]);
-
+function usersResponse(int $status, array $payload): never
+{
+    http_response_code($status);
+    echo json_encode($payload, JSON_UNESCAPED_SLASHES);
     exit;
 }
 
 try {
-    $authUser =
-        requireRole([
-            'admin'
-        ]);
-
-    $pdo =
-        getDatabaseConnection();
-
-    $statement =
-        $pdo->query(
-            'SELECT
-                id,
-                full_name,
-                email,
-                country,
-                role,
-                is_verified,
-                account_status,
-                profile_image,
-                email_verified_at,
-                last_login_at,
-                created_at
-             FROM users
-             ORDER BY
-                FIELD(
-                    role,
-                    "admin",
-                    "manager",
-                    "staff",
-                    "customer"
-                ),
-                created_at DESC,
-                id DESC'
-        );
-
-    $users =
-        $statement->fetchAll(
-            PDO::FETCH_ASSOC
-        );
-
-    foreach (
-        $users as &$user
-    ) {
-        $user['id'] =
-            (int)$user['id'];
-
-        $user['is_verified'] =
-            (int)$user[
-                'is_verified'
-            ];
-
-        $user['role'] =
-            strtolower(
-                (string)$user['role']
-            );
+    if ($_SERVER['REQUEST_METHOD'] !== 'GET') {
+        usersResponse(405, ['success' => false, 'message' => 'Method not allowed.']);
     }
 
-    unset($user);
+    $authUser = authenticateUser();
+    requireRole($authUser, ['admin', 'manager']);
 
-    echo json_encode([
+    $columnRows = $pdo->query('SHOW COLUMNS FROM users')->fetchAll(PDO::FETCH_ASSOC);
+    $available = [];
+    foreach ($columnRows as $column) {
+        $available[$column['Field']] = true;
+    }
+
+    $wanted = [
+        'id', 'full_name', 'name', 'email', 'phone', 'country', 'role',
+        'profile_image', 'is_verified', 'is_active', 'created_at', 'updated_at',
+        'last_login_at'
+    ];
+    $selected = array_values(array_filter($wanted, fn ($name) => isset($available[$name])));
+
+    $sql = 'SELECT ' . implode(', ', array_map(fn ($name) => "`$name`", $selected)) . ' FROM users';
+    if (isset($available['created_at'])) {
+        $sql .= ' ORDER BY created_at DESC';
+    } else {
+        $sql .= ' ORDER BY id DESC';
+    }
+
+    $users = $pdo->query($sql)->fetchAll(PDO::FETCH_ASSOC);
+
+    usersResponse(200, [
         'success' => true,
-
-        'current_user_id' =>
-            (int)$authUser['id'],
-
-        'users' =>
-            $users
+        'count' => count($users),
+        'users' => $users
     ]);
-} catch (Throwable $e) {
-    error_log(
-        'Admin users error: ' .
-        $e->getMessage()
-    );
-
-    if (
-        http_response_code() <
-        400
-    ) {
-        http_response_code(500);
-    }
-
-    echo json_encode([
-        'success' => false,
-        'message' =>
-            'Unable to load user accounts.'
-    ]);
+} catch (Throwable $error) {
+    usersResponse(500, ['success' => false, 'message' => 'Unable to load user accounts.']);
 }

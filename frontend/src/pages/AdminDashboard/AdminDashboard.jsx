@@ -25,6 +25,7 @@ import {
 import {
     FaBars,
     FaBell,
+    FaCamera,
     FaBed,
     FaBellConcierge,
     FaCalendarCheck,
@@ -40,11 +41,13 @@ import {
     FaMessage,
     FaMoneyBillWave,
     FaPeopleGroup,
+    FaPenToSquare,
     FaReceipt,
     FaRightFromBracket,
     FaRoute,
     FaStar,
     FaTags,
+    FaTrash,
     FaUserGroup,
     FaUtensils,
     FaXmark
@@ -57,6 +60,7 @@ import {
 } from "../../utils/auth";
 
 import "./AdminDashboard.css";
+import centuriaLogo from "../../assets/images/centuria-logo.png";
 
 const API_URL =
     import.meta.env.VITE_API_URL ||
@@ -131,6 +135,14 @@ const SERVICE_COLORS = [
     "#12b76a",
     "#7548d8",
     "#a0a7b4"
+];
+
+const HERO_SLIDES = [
+    "https://images.unsplash.com/photo-1566073771259-6a8506099945?auto=format&fit=crop&w=1800&q=90",
+    "https://images.unsplash.com/photo-1611892440504-42a792e24d32?auto=format&fit=crop&w=1800&q=90",
+    "https://images.unsplash.com/photo-1414235077428-338989a2e8c0?auto=format&fit=crop&w=1800&q=90",
+    "https://images.unsplash.com/photo-1500530855697-b586d89ba3ee?auto=format&fit=crop&w=1800&q=90",
+    "https://images.unsplash.com/photo-1540555700478-4be289fbecef?auto=format&fit=crop&w=1800&q=90"
 ];
 
 const STATUS_OPTIONS = [
@@ -259,12 +271,13 @@ function getGreeting() {
 function AdminDashboard() {
     const navigate = useNavigate();
 
-    const adminUser =
+    const [adminUser, setAdminUser] = useState(
         getUser() || {
             full_name: "Admin User",
             email: "admin@centuria.lk",
             role: "admin"
-        };
+        }
+    );
 
     const [activePage, setActivePage] =
         useState("dashboard");
@@ -298,6 +311,18 @@ function AdminDashboard() {
 
     const [toast, setToast] =
         useState("");
+
+    const [users, setUsers] = useState([]);
+    const [usersLoading, setUsersLoading] = useState(false);
+    const [accountRole, setAccountRole] = useState("customer");
+    const [profileOpen, setProfileOpen] = useState(false);
+    const [profileSaving, setProfileSaving] = useState(false);
+    const [profileForm, setProfileForm] = useState({
+        full_name: adminUser.full_name || adminUser.name || "",
+        country: adminUser.country || "Sri Lanka",
+        profile_image: adminUser.profile_image || ""
+    });
+    const [heroIndex, setHeroIndex] = useState(0);
 
     const fetchOrders = useCallback(
         async (showLoader = false) => {
@@ -371,6 +396,131 @@ function AdminDashboard() {
         },
         [navigate]
     );
+
+    const fetchProfile = useCallback(async () => {
+        try {
+            const response = await fetch(`${API_URL}/admin/profile.php`, {
+                method: "GET",
+                headers: getAuthHeaders()
+            });
+            const data = await response.json();
+            if (response.ok && data.success && data.user) {
+                setAdminUser(data.user);
+                localStorage.setItem("centuria_user", JSON.stringify(data.user));
+                setProfileForm({
+                    full_name: data.user.full_name || data.user.name || "",
+                    country: data.user.country || "Sri Lanka",
+                    profile_image: data.user.profile_image || ""
+                });
+            }
+        } catch {
+            // Keep the locally stored profile when the profile API is temporarily unavailable.
+        }
+    }, []);
+
+    const fetchUsers = useCallback(async () => {
+        try {
+            setUsersLoading(true);
+            const response = await fetch(`${API_URL}/admin/users.php`, {
+                method: "GET",
+                headers: getAuthHeaders()
+            });
+            const data = await response.json();
+            if (response.status === 401) {
+                logout();
+                navigate("/portal?mode=login", { replace: true });
+                return;
+            }
+            if (!response.ok || !data.success) {
+                throw new Error(data.message || "Unable to load accounts.");
+            }
+            setUsers(Array.isArray(data.users) ? data.users : []);
+        } catch (requestError) {
+            showToast(requestError.message || "Unable to load accounts.");
+        } finally {
+            setUsersLoading(false);
+        }
+    }, [navigate]);
+
+    const saveProfile = async () => {
+        try {
+            setProfileSaving(true);
+            const response = await fetch(`${API_URL}/admin/profile.php`, {
+                method: "PATCH",
+                headers: getAuthHeaders(),
+                body: JSON.stringify(profileForm)
+            });
+            const data = await response.json();
+            if (!response.ok || !data.success) {
+                throw new Error(data.message || "Unable to save profile.");
+            }
+            setAdminUser(data.user);
+            localStorage.setItem("centuria_user", JSON.stringify(data.user));
+            setProfileOpen(false);
+            showToast("Profile saved permanently.");
+        } catch (requestError) {
+            showToast(requestError.message || "Profile update failed.");
+        } finally {
+            setProfileSaving(false);
+        }
+    };
+
+    const handleProfileImage = (event) => {
+        const file = event.target.files?.[0];
+        if (!file) return;
+        if (!file.type.startsWith("image/")) {
+            showToast("Please select an image file.");
+            return;
+        }
+        if (file.size > 2 * 1024 * 1024) {
+            showToast("Profile image must be smaller than 2 MB.");
+            return;
+        }
+        const reader = new FileReader();
+        reader.onload = () => setProfileForm((current) => ({
+            ...current,
+            profile_image: String(reader.result || "")
+        }));
+        reader.readAsDataURL(file);
+    };
+
+    const deleteUserAccount = async (user) => {
+        if (Number(user.id) === Number(adminUser.id)) {
+            showToast("You cannot delete your own logged-in account.");
+            return;
+        }
+        const confirmed = window.confirm(
+            `Permanently delete ${user.full_name || user.email}? This cannot be undone.`
+        );
+        if (!confirmed) return;
+        try {
+            const response = await fetch(`${API_URL}/admin/delete-user.php`, {
+                method: "DELETE",
+                headers: getAuthHeaders(),
+                body: JSON.stringify({ user_id: user.id })
+            });
+            const data = await response.json();
+            if (!response.ok || !data.success) {
+                throw new Error(data.message || "Unable to delete account.");
+            }
+            showToast("Account permanently deleted.");
+            await fetchUsers();
+        } catch (requestError) {
+            showToast(requestError.message || "Account deletion failed.");
+        }
+    };
+
+    useEffect(() => {
+        fetchProfile();
+        fetchUsers();
+    }, [fetchProfile, fetchUsers]);
+
+    useEffect(() => {
+        const slider = window.setInterval(() => {
+            setHeroIndex((current) => (current + 1) % HERO_SLIDES.length);
+        }, 5000);
+        return () => window.clearInterval(slider);
+    }, []);
 
     useEffect(() => {
         fetchOrders(true);
@@ -897,6 +1047,8 @@ function AdminDashboard() {
         page
     ) => {
         setActivePage(page);
+        if (page === "customers") setAccountRole("customer");
+        if (page === "staff") setAccountRole("staff");
         setSidebarOpen(false);
         setSearch("");
         setStatusFilter("all");
@@ -1255,7 +1407,7 @@ function AdminDashboard() {
     const renderDashboard =
         () => (
             <>
-                <section className="admin-hero">
+                <section className="admin-hero" style={{ backgroundImage: `url(${HERO_SLIDES[heroIndex]})` }}>
                     <div className="admin-hero-overlay" />
 
                     <div className="admin-hero-content">
@@ -2248,6 +2400,71 @@ function AdminDashboard() {
             </>
         );
 
+    const renderAccountManagement = () => {
+        const roles = ["customer", "admin", "manager", "staff"];
+        const visibleUsers = users.filter((user) =>
+            String(user.role || "customer").toLowerCase() === accountRole
+        );
+        return (
+            <>
+                <section className="admin-card admin-account-manager">
+                    <div className="admin-section-heading">
+                        <div>
+                            <span className="admin-section-kicker">ACCOUNT CONTROL</span>
+                            <h3>Registered Accounts</h3>
+                            <p>Manage customer, admin, manager and staff accounts stored in Railway MySQL.</p>
+                        </div>
+                        <button type="button" className="admin-primary-btn" onClick={fetchUsers}>Refresh</button>
+                    </div>
+                    <div className="admin-role-tabs">
+                        {roles.map((role) => (
+                            <button
+                                type="button"
+                                key={role}
+                                className={accountRole === role ? "active" : ""}
+                                onClick={() => setAccountRole(role)}
+                            >
+                                {role.charAt(0).toUpperCase() + role.slice(1)}
+                                <span>{users.filter((user) => String(user.role || "customer").toLowerCase() === role).length}</span>
+                            </button>
+                        ))}
+                    </div>
+                    <div className="admin-table-wrap">
+                        <table className="admin-orders-table admin-users-table">
+                            <thead><tr><th>Profile</th><th>Name</th><th>Email</th><th>Role</th><th>Country</th><th>Status</th><th>Created</th><th>Action</th></tr></thead>
+                            <tbody>
+                                {usersLoading ? (
+                                    <tr><td colSpan="8" className="admin-empty-cell">Loading accounts...</td></tr>
+                                ) : visibleUsers.length === 0 ? (
+                                    <tr><td colSpan="8" className="admin-empty-cell">No {accountRole} accounts found.</td></tr>
+                                ) : visibleUsers.map((user) => (
+                                    <tr key={user.id}>
+                                        <td><div className="account-mini-avatar">{user.profile_image ? <img src={user.profile_image} alt="" /> : String(user.full_name || user.email || "U").charAt(0).toUpperCase()}</div></td>
+                                        <td><strong>{user.full_name || user.name || "-"}</strong></td>
+                                        <td>{user.email || "-"}</td>
+                                        <td><span className="account-role-badge">{user.role || "customer"}</span></td>
+                                        <td>{user.country || "-"}</td>
+                                        <td><span className={`account-status ${Number(user.is_active ?? 1) === 1 ? "active" : "inactive"}`}>{Number(user.is_active ?? 1) === 1 ? "Active" : "Inactive"}</span></td>
+                                        <td>{formatDate(user.created_at)}</td>
+                                        <td>
+                                            <button
+                                                type="button"
+                                                className="admin-delete-account-btn"
+                                                disabled={Number(user.id) === Number(adminUser.id)}
+                                                onClick={() => deleteUserAccount(user)}
+                                            ><FaTrash /> Delete</button>
+                                        </td>
+                                    </tr>
+                                ))}
+                            </tbody>
+                        </table>
+                    </div>
+                </section>
+                {renderWeeklyActivity()}
+            </>
+        );
+    };
+
     const renderPageContent =
         () => {
             if (
@@ -2257,11 +2474,8 @@ function AdminDashboard() {
                 return renderDashboard();
             }
 
-            if (
-                activePage ===
-                "customers"
-            ) {
-                return renderCustomers();
+            if (activePage === "customers") {
+                return renderAccountManagement();
             }
 
             if (
@@ -2269,6 +2483,10 @@ function AdminDashboard() {
                 "reports"
             ) {
                 return renderReports();
+            }
+
+            if (activePage === "staff") {
+                return renderAccountManagement();
             }
 
             if (
@@ -2436,8 +2654,8 @@ function AdminDashboard() {
                 }`}
             >
                 <div className="admin-logo">
-                    <div className="admin-logo-mark">
-                        <FaLeaf />
+                    <div className="admin-logo-mark real-logo">
+                        <img src={centuriaLogo} alt="Centuria Lake Resort" />
                     </div>
 
                     <div>
@@ -2500,15 +2718,20 @@ function AdminDashboard() {
                 </nav>
 
                 <div className="admin-user-card">
-                    <div className="admin-user-avatar">
-                        {String(
-                            adminUser.full_name ??
-                            adminUser.name ??
-                            "A"
-                        )
-                            .charAt(0)
-                            .toUpperCase()}
-                    </div>
+                    <button
+                        type="button"
+                        className="admin-user-avatar admin-profile-trigger"
+                        onClick={() => setProfileOpen(true)}
+                        title="Edit profile"
+                    >
+                        {adminUser.profile_image ? (
+                            <img src={adminUser.profile_image} alt="Admin profile" />
+                        ) : (
+                            String(adminUser.full_name ?? adminUser.name ?? "A")
+                                .charAt(0)
+                                .toUpperCase()
+                        )}
+                    </button>
 
                     <div>
                         <strong>
@@ -2612,15 +2835,20 @@ function AdminDashboard() {
                             )}
                         </button>
 
-                        <div className="admin-top-avatar">
-                            {String(
-                                adminUser.full_name ??
-                                adminUser.name ??
-                                "A"
-                            )
-                                .charAt(0)
-                                .toUpperCase()}
-                        </div>
+                        <button
+                            type="button"
+                            className="admin-top-avatar admin-profile-trigger"
+                            onClick={() => setProfileOpen(true)}
+                            title="Edit admin profile"
+                        >
+                            {adminUser.profile_image ? (
+                                <img src={adminUser.profile_image} alt="Admin profile" />
+                            ) : (
+                                String(adminUser.full_name ?? adminUser.name ?? "A")
+                                    .charAt(0)
+                                    .toUpperCase()
+                            )}
+                        </button>
 
                         <div>
                             <strong>
@@ -2872,6 +3100,35 @@ function AdminDashboard() {
                                     </button>
                                 </>
                             )}
+                        </div>
+                    </section>
+                </div>
+            )}
+
+            {profileOpen && (
+                <div className="admin-profile-overlay" onMouseDown={() => setProfileOpen(false)}>
+                    <section className="admin-profile-modal" onMouseDown={(event) => event.stopPropagation()}>
+                        <button type="button" className="admin-modal-close" onClick={() => setProfileOpen(false)}><FaXmark /></button>
+                        <div className="admin-profile-heading">
+                            <span>ADMIN PROFILE</span>
+                            <h2>Edit Profile</h2>
+                            <p>Your profile is saved permanently in the Centuria database.</p>
+                        </div>
+                        <div className="admin-profile-photo-area">
+                            <div className="admin-profile-photo">
+                                {profileForm.profile_image ? <img src={profileForm.profile_image} alt="Profile preview" /> : String(profileForm.full_name || "A").charAt(0).toUpperCase()}
+                            </div>
+                            <label className="admin-photo-upload"><FaCamera /> Change Photo<input type="file" accept="image/*" onChange={handleProfileImage} /></label>
+                        </div>
+                        <div className="admin-profile-fields">
+                            <label>Full Name<input value={profileForm.full_name} onChange={(event) => setProfileForm((current) => ({ ...current, full_name: event.target.value }))} /></label>
+                            <label>Email<input value={adminUser.email || ""} disabled /></label>
+                            <label>Role<input value={adminUser.role || "admin"} disabled /></label>
+                            <label>Country<input value={profileForm.country} onChange={(event) => setProfileForm((current) => ({ ...current, country: event.target.value }))} /></label>
+                        </div>
+                        <div className="admin-profile-actions">
+                            <button type="button" className="admin-secondary-btn" onClick={() => setProfileOpen(false)}>Cancel</button>
+                            <button type="button" className="admin-primary-btn" disabled={profileSaving} onClick={saveProfile}><FaPenToSquare /> {profileSaving ? "Saving..." : "Save Profile"}</button>
                         </div>
                     </section>
                 </div>
