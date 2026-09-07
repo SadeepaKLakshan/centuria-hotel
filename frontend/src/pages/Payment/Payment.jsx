@@ -26,9 +26,22 @@ import {
     Search,
     ShieldCheck,
     UserRound,
-    WalletCards,
     X
 } from "lucide-react";
+
+import {
+    FaAmazonPay,
+    FaApplePay,
+    FaCcAmex,
+    FaCcDiscover,
+    FaCcMastercard,
+    FaCcVisa,
+    FaPaypal
+} from "react-icons/fa";
+
+import {
+    SiEbay
+} from "react-icons/si";
 
 import centuriaLogo
     from "../../assets/images/centuria-logo.png";
@@ -43,62 +56,54 @@ const API_URL =
 
 const PAYMENT_METHODS = [
     {
-        id: "mastercard",
-        name: "Mastercard",
-        short: "MC",
-        type: "card"
-    },
-    {
         id: "visa",
         name: "Visa",
-        short: "VISA",
-        type: "card"
+        type: "card",
+        Icon: FaCcVisa
     },
     {
-        id: "apple-pay",
-        name: "Apple Pay",
-        short: " Pay",
-        type: "wallet"
-    },
-    {
-        id: "amazon-pay",
-        name: "Amazon Pay",
-        short: "amazon",
-        type: "wallet"
-    },
-    {
-        id: "ebay-pay",
-        name: "eBay Pay",
-        short: "eBay",
-        type: "wallet"
+        id: "mastercard",
+        name: "Mastercard",
+        type: "card",
+        Icon: FaCcMastercard
     },
     {
         id: "amex",
         name: "American Express",
-        short: "AMEX",
-        type: "card"
+        type: "card",
+        Icon: FaCcAmex
+    },
+    {
+        id: "discover",
+        name: "Discover",
+        type: "card",
+        Icon: FaCcDiscover
+    },
+    {
+        id: "apple-pay",
+        name: "Apple Pay",
+        type: "wallet",
+        Icon: FaApplePay
     },
     {
         id: "paypal",
         name: "PayPal",
-        short: "PayPal",
-        type: "wallet"
+        type: "wallet",
+        Icon: FaPaypal
     },
     {
-        id: "other-card",
-        name: "Other Card",
-        short: "CARD",
-        type: "card"
+        id: "amazon-pay",
+        name: "Amazon Pay",
+        type: "wallet",
+        Icon: FaAmazonPay
+    },
+    {
+        id: "ebay",
+        name: "eBay",
+        type: "wallet",
+        Icon: SiEbay
     }
 ];
-
-
-const DEMO_CARD = {
-    holder: "Sadeepa Lakshan",
-    number: "4242424242424242",
-    expiry: "12/30",
-    cvv: "123"
-};
 
 
 const CHECKOUT_KEYS = [
@@ -120,11 +125,13 @@ function readJson(
                 key
             );
 
-        return value
-            ? JSON.parse(
-                  value
-              )
-            : fallback;
+        if (!value) {
+            return fallback;
+        }
+
+        return JSON.parse(
+            value
+        );
     } catch {
         return fallback;
     }
@@ -144,12 +151,14 @@ function getAuthHeaders() {
     const token =
         getToken();
 
-    return token
-        ? {
-              Authorization:
-                  `Bearer ${token}`
-          }
-        : {};
+    if (!token) {
+        return {};
+    }
+
+    return {
+        Authorization:
+            `Bearer ${token}`
+    };
 }
 
 
@@ -205,6 +214,9 @@ function normalizeType(
         ) ||
         text.includes(
             "dining"
+        ) ||
+        text.includes(
+            "restaurant"
         )
     ) {
         return "dining";
@@ -221,6 +233,12 @@ function normalizeType(
     if (
         text.includes(
             "tour"
+        ) ||
+        text.includes(
+            "travel"
+        ) ||
+        text.includes(
+            "transport"
         )
     ) {
         return "tour";
@@ -232,6 +250,9 @@ function normalizeType(
         ) ||
         text.includes(
             "massage"
+        ) ||
+        text.includes(
+            "wellness"
         )
     ) {
         return "spa";
@@ -308,18 +329,35 @@ function onlyDigits(
 function formatCardNumber(
     value
 ) {
-    return onlyDigits(
-        value
-    )
-        .slice(
+    const digits =
+        onlyDigits(
+            value
+        ).slice(
             0,
             19
-        )
+        );
+
+    return digits
         .replace(
             /(.{4})/g,
             "$1 "
         )
         .trim();
+}
+
+
+function validCardInput(
+    value
+) {
+    const digits =
+        onlyDigits(
+            value
+        );
+
+    return (
+        digits.length >= 4 &&
+        digits.length <= 19
+    );
 }
 
 
@@ -335,8 +373,7 @@ function formatExpiry(
         );
 
     if (
-        digits.length <=
-        2
+        digits.length <= 2
     ) {
         return digits;
     }
@@ -350,67 +387,7 @@ function formatExpiry(
 }
 
 
-function isValidCard(
-    number
-) {
-    const digits =
-        onlyDigits(
-            number
-        );
-
-    if (
-        digits.length <
-            13 ||
-        digits.length >
-            19
-    ) {
-        return false;
-    }
-
-    let sum = 0;
-    let doubleDigit =
-        false;
-
-    for (
-        let index =
-            digits.length -
-            1;
-        index >= 0;
-        index -= 1
-    ) {
-        let digit =
-            Number(
-                digits[
-                    index
-                ]
-            );
-
-        if (
-            doubleDigit
-        ) {
-            digit *= 2;
-
-            if (
-                digit > 9
-            ) {
-                digit -= 9;
-            }
-        }
-
-        sum += digit;
-
-        doubleDigit =
-            !doubleDigit;
-    }
-
-    return (
-        sum % 10 ===
-        0
-    );
-}
-
-
-function validExpiry(
+function validExpiryInput(
     value
 ) {
     const match =
@@ -420,9 +397,7 @@ function validExpiry(
             /^(\d{2})\/(\d{2})$/
         );
 
-    if (
-        !match
-    ) {
+    if (!match) {
         return false;
     }
 
@@ -433,37 +408,9 @@ function validExpiry(
             ]
         );
 
-    const year =
-        2000 +
-        Number(
-            match[
-                2
-            ]
-        );
-
-    if (
-        month < 1 ||
-        month > 12
-    ) {
-        return false;
-    }
-
-    const today =
-        new Date();
-
-    const expiryDate =
-        new Date(
-            year,
-            month,
-            0,
-            23,
-            59,
-            59
-        );
-
     return (
-        expiryDate >=
-        today
+        month >= 1 &&
+        month <= 12
     );
 }
 
@@ -471,6 +418,7 @@ function validExpiry(
 function Payment() {
     const navigate =
         useNavigate();
+
 
     const [
         checkout,
@@ -480,47 +428,56 @@ function Payment() {
             getCheckout()
     );
 
+
     const [
         method,
         setMethod
     ] = useState(
-        "mastercard"
+        "visa"
     );
+
 
     const [
         holderName,
         setHolderName
     ] = useState("");
 
+
     const [
         cardNumber,
         setCardNumber
     ] = useState("");
+
 
     const [
         expiry,
         setExpiry
     ] = useState("");
 
+
     const [
         cvv,
         setCvv
     ] = useState("");
+
 
     const [
         saveCard,
         setSaveCard
     ] = useState(true);
 
+
     const [
         loading,
         setLoading
     ] = useState(false);
 
+
     const [
         error,
         setError
     ] = useState("");
+
 
     const [
         success,
@@ -551,14 +508,12 @@ function Payment() {
 
 
     useEffect(() => {
-        const latestCheckout =
+        const latest =
             getCheckout();
 
-        if (
-            latestCheckout
-        ) {
+        if (latest) {
             setCheckout(
-                latestCheckout
+                latest
             );
         }
     }, []);
@@ -583,11 +538,10 @@ function Payment() {
 
     const summary =
         useMemo(() => {
-            if (
-                !checkout
-            ) {
+            if (!checkout) {
                 return null;
             }
+
 
             const quantity =
                 Math.max(
@@ -596,7 +550,6 @@ function Payment() {
                         checkout.quantity ||
                         checkout.qty ||
                         checkout.sessions ||
-                        checkout.guests ||
                         1
                     )
                 );
@@ -639,7 +592,8 @@ function Payment() {
                         checkout.type ||
                         checkout.order_type ||
                         checkout.serviceType ||
-                        checkout.service_type
+                        checkout.service_type ||
+                        checkout.category
                     ),
 
                 serviceLabel:
@@ -647,7 +601,8 @@ function Payment() {
                         checkout.type ||
                         checkout.order_type ||
                         checkout.serviceType ||
-                        checkout.service_type
+                        checkout.service_type ||
+                        checkout.category
                     ),
 
                 title:
@@ -662,12 +617,13 @@ function Payment() {
                     checkout.tourName ||
                     checkout.tour_name ||
                     checkout.treatmentName ||
+                    checkout.treatment_name ||
                     "Centuria Booking",
 
                 description:
                     checkout.description ||
                     checkout.category ||
-                    checkout.package ||
+                    checkout.subtitle ||
                     "Premium Centuria Lake Resort experience.",
 
                 image:
@@ -684,10 +640,13 @@ function Payment() {
                     checkout.guest ||
                     checkout.people ||
                     checkout.personType ||
+                    checkout.person_type ||
                     "",
 
                 duration:
                     checkout.duration ||
+                    checkout.durationLabel ||
+                    checkout.duration_label ||
                     checkout.nights ||
                     "",
 
@@ -707,10 +666,13 @@ function Payment() {
 
                 portion:
                     checkout.portion ||
+                    checkout.size ||
                     "",
 
                 spice:
                     checkout.spice ||
+                    checkout.spiceLevel ||
+                    checkout.spice_level ||
                     "",
 
                 transport:
@@ -729,41 +691,12 @@ function Payment() {
         ]);
 
 
-    const fillDemoCard =
-        () => {
-            setMethod(
-                "visa"
-            );
-
-            setHolderName(
-                DEMO_CARD.holder
-            );
-
-            setCardNumber(
-                formatCardNumber(
-                    DEMO_CARD.number
-                )
-            );
-
-            setExpiry(
-                DEMO_CARD.expiry
-            );
-
-            setCvv(
-                DEMO_CARD.cvv
-            );
-
-            setError("");
-        };
-
-
     const createDescription =
         () => {
-            if (
-                !summary
-            ) {
+            if (!summary) {
                 return "";
             }
+
 
             const parts = [
                 `${summary.serviceLabel}: ${summary.title}`
@@ -834,7 +767,7 @@ function Payment() {
 
 
             parts.push(
-                `Payment: ${selectedMethod.name}`
+                `Payment Method: ${selectedMethod.name}`
             );
 
 
@@ -849,9 +782,7 @@ function Payment() {
             setError("");
 
 
-            if (
-                !summary
-            ) {
+            if (!summary) {
                 setError(
                     "No booking has been selected."
                 );
@@ -878,7 +809,7 @@ function Payment() {
                 ) <= 0
             ) {
                 setError(
-                    "The selected booking does not contain a valid amount."
+                    "The booking amount is invalid."
                 );
 
                 return false;
@@ -908,12 +839,12 @@ function Payment() {
 
 
             if (
-                !isValidCard(
+                !validCardInput(
                     cardNumber
                 )
             ) {
                 setError(
-                    "Please enter a valid card number."
+                    "Please enter a card number."
                 );
 
                 return false;
@@ -921,12 +852,12 @@ function Payment() {
 
 
             if (
-                !validExpiry(
+                !validExpiryInput(
                     expiry
                 )
             ) {
                 setError(
-                    "Please enter a valid expiry date."
+                    "Please enter the expiry date as MM/YY."
                 );
 
                 return false;
@@ -939,7 +870,7 @@ function Payment() {
                 )
             ) {
                 setError(
-                    "Please enter a valid CVV."
+                    "Please enter a 3 or 4 digit security code."
                 );
 
                 return false;
@@ -967,20 +898,11 @@ function Payment() {
                 setError("");
 
 
-                await new Promise(
-                    resolve =>
-                        window.setTimeout(
-                            resolve,
-                            900
-                        )
-                );
-
-
                 const paymentReference =
-                    `DEMO-PAY-${Date.now()}-${Math.floor(
-                        1000 +
+                    `PAY-${Date.now()}-${Math.floor(
+                        100000 +
                         Math.random() *
-                            9000
+                            900000
                     )}`;
 
 
@@ -1013,10 +935,14 @@ function Payment() {
                         createDescription(),
 
                     total_amount:
-                        summary.total,
+                        Number(
+                            summary.total
+                        ),
 
                     amount:
-                        summary.total,
+                        Number(
+                            summary.total
+                        ),
 
                     currency:
                         "LKR",
@@ -1025,7 +951,7 @@ function Payment() {
                         "pending",
 
                     payment_status:
-                        "demo_paid",
+                        "pending",
 
                     payment_method:
                         selectedMethod.name,
@@ -1039,57 +965,73 @@ function Payment() {
                     details: {
                         ...checkout,
 
-                        normalized: {
-                            type:
-                                summary.type,
+                        type:
+                            summary.type,
 
-                            serviceLabel:
-                                summary.serviceLabel,
+                        service_type:
+                            summary.type,
 
-                            title:
-                                summary.title,
+                        title:
+                            summary.title,
 
-                            description:
-                                summary.description,
+                        name:
+                            summary.title,
 
-                            image:
-                                summary.image,
+                        description:
+                            summary.description,
 
-                            guestType:
-                                summary.guestType,
+                        image:
+                            summary.image,
 
-                            duration:
-                                summary.duration,
+                        guestType:
+                            summary.guestType,
 
-                            date:
-                                summary.date,
+                        guest_type:
+                            summary.guestType,
 
-                            time:
-                                summary.time,
+                        duration:
+                            summary.duration,
 
-                            portion:
-                                summary.portion,
+                        date:
+                            summary.date,
 
-                            spice:
-                                summary.spice,
+                        booking_date:
+                            summary.date,
 
-                            transport:
-                                summary.transport,
+                        time:
+                            summary.time,
 
-                            quantity:
-                                summary.quantity,
+                        booking_time:
+                            summary.time,
 
-                            unitPrice:
-                                summary.unitPrice,
+                        portion:
+                            summary.portion,
 
-                            total:
-                                summary.total
-                        },
+                        spice:
+                            summary.spice,
+
+                        transport:
+                            summary.transport,
+
+                        quantity:
+                            summary.quantity,
+
+                        sessions:
+                            summary.quantity,
+
+                        unitPrice:
+                            summary.unitPrice,
+
+                        unit_price:
+                            summary.unitPrice,
+
+                        total:
+                            summary.total,
+
+                        total_amount:
+                            summary.total,
 
                         payment: {
-                            mode:
-                                "assignment_demo",
-
                             method:
                                 selectedMethod.name,
 
@@ -1104,12 +1046,21 @@ function Payment() {
                             currency:
                                 "LKR",
 
-                            completedAt:
+                            status:
+                                "pending",
+
+                            submittedAt:
                                 new Date()
                                     .toISOString()
                         }
                     }
                 };
+
+
+                console.log(
+                    "Centuria payment payload:",
+                    payload
+                );
 
 
                 const response =
@@ -1145,9 +1096,15 @@ function Payment() {
                         await response.json();
                 } catch {
                     throw new Error(
-                        "The server returned an invalid response."
+                        `Invalid server response. HTTP ${response.status}`
                     );
                 }
+
+
+                console.log(
+                    "Centuria booking response:",
+                    data
+                );
 
 
                 if (
@@ -1185,9 +1142,9 @@ function Payment() {
                         false
                 ) {
                     throw new Error(
-                        data.message ||
                         data.error ||
-                        "Unable to create the booking."
+                        data.message ||
+                        `Unable to create the booking. HTTP ${response.status}`
                     );
                 }
 
@@ -1239,10 +1196,13 @@ function Payment() {
                             orderId,
 
                         status:
+                            serverOrder.status ||
+                            data.status ||
                             "pending",
 
                         paymentStatus:
-                            "demo_paid",
+                            serverOrder.payment_status ||
+                            "pending",
 
                         type:
                             summary.type,
@@ -1298,7 +1258,12 @@ function Payment() {
                         selectedMethod.name,
 
                     reference:
-                        paymentReference
+                        paymentReference,
+
+                    status:
+                        serverOrder.status ||
+                        data.status ||
+                        "pending"
                 });
 
 
@@ -1308,9 +1273,14 @@ function Payment() {
             } catch (
                 requestError
             ) {
+                console.error(
+                    "Payment error:",
+                    requestError
+                );
+
                 setError(
                     requestError.message ||
-                    "The payment could not be completed."
+                    "Unable to create the booking."
                 );
             } finally {
                 setLoading(
@@ -1320,9 +1290,7 @@ function Payment() {
         };
 
 
-    if (
-        !summary
-    ) {
+    if (!summary) {
         return (
             <div className="payment-empty-page">
 
@@ -1334,9 +1302,7 @@ function Payment() {
                 />
 
                 <PackageCheck
-                    size={
-                        54
-                    }
+                    size={54}
                 />
 
                 <h1>
@@ -1349,6 +1315,7 @@ function Payment() {
 
 
                 <div>
+
                     <button
                         type="button"
                         onClick={() =>
@@ -1392,6 +1359,7 @@ function Payment() {
                     >
                         Spa
                     </button>
+
                 </div>
 
             </div>
@@ -1407,23 +1375,15 @@ function Payment() {
                 <div>
 
                     <a href="mailto:info@centuria.lk">
-
                         <Mail />
-
                         info@centuria.lk
-
                     </a>
-
 
                     <span />
 
-
                     <a href="tel:+94472232232">
-
                         <Phone />
-
                         +94 47 223 2232
-
                     </a>
 
                 </div>
@@ -1435,16 +1395,13 @@ function Payment() {
                         type="button"
                     >
                         <MapPin />
-
                         Location
                     </button>
-
 
                     <button
                         type="button"
                     >
                         <HelpCircle />
-
                         Help Center
                     </button>
 
@@ -1474,6 +1431,7 @@ function Payment() {
 
 
                     <div>
+
                         <strong>
                             CENTURIA
                         </strong>
@@ -1481,6 +1439,7 @@ function Payment() {
                         <span>
                             LAKE RESORT
                         </span>
+
                     </div>
 
                 </button>
@@ -1493,37 +1452,30 @@ function Payment() {
                             "Home",
                             "/home"
                         ],
-
                         [
                             "About",
                             "/about"
                         ],
-
                         [
                             "Rooms",
                             "/rooms"
                         ],
-
                         [
                             "Foods",
                             "/foods"
                         ],
-
                         [
                             "Tours",
                             "/tours"
                         ],
-
                         [
                             "Spa",
                             "/spa"
                         ],
-
                         [
                             "Offers",
                             "/offers"
                         ],
-
                         [
                             "Contact",
                             "/contact"
@@ -1654,7 +1606,7 @@ function Payment() {
                     </h1>
 
                     <p>
-                        Complete your booking using our assignment demonstration checkout experience.
+                        Complete your booking using our secure checkout experience.
                     </p>
 
                 </div>
@@ -1667,11 +1619,11 @@ function Payment() {
                     <span>
 
                         <strong>
-                            Demo Secure Checkout
+                            Secure Checkout
                         </strong>
 
                         <small>
-                            No real money will be charged.
+                            Protected booking details
                         </small>
 
                     </span>
@@ -1753,7 +1705,7 @@ function Payment() {
                             </h2>
 
                             <p>
-                                Choose your preferred demo payment method
+                                Select your preferred payment option
                             </p>
 
                         </div>
@@ -1764,51 +1716,57 @@ function Payment() {
                     <div className="payment-method-grid">
 
                         {PAYMENT_METHODS.map(
-                            item => (
-                                <button
-                                    key={
-                                        item.id
-                                    }
-                                    type="button"
-                                    className={`payment-method ${item.id} ${
-                                        method ===
-                                        item.id
-                                            ? "active"
-                                            : ""
-                                    }`}
-                                    onClick={() => {
-                                        setMethod(
+                            item => {
+                                const Icon =
+                                    item.Icon;
+
+                                return (
+                                    <button
+                                        key={
                                             item.id
-                                        );
-
-                                        setError(
-                                            ""
-                                        );
-                                    }}
-                                >
-
-                                    <strong>
-                                        {
-                                            item.short
                                         }
-                                    </strong>
+                                        type="button"
+                                        className={`payment-method payment-method--${item.id} ${
+                                            method ===
+                                            item.id
+                                                ? "active"
+                                                : ""
+                                        }`}
+                                        onClick={() => {
+                                            setMethod(
+                                                item.id
+                                            );
 
-                                    <span>
-                                        {
-                                            item.name
-                                        }
-                                    </span>
+                                            setError(
+                                                ""
+                                            );
+                                        }}
+                                    >
+
+                                        <div className="payment-method-logo">
+
+                                            <Icon />
+
+                                        </div>
 
 
-                                    {method ===
-                                        item.id && (
-                                        <b>
-                                            <Check />
-                                        </b>
-                                    )}
+                                        <span>
+                                            {
+                                                item.name
+                                            }
+                                        </span>
 
-                                </button>
-                            )
+
+                                        {method ===
+                                            item.id && (
+                                            <b>
+                                                <Check />
+                                            </b>
+                                        )}
+
+                                    </button>
+                                );
+                            }
                         )}
 
                     </div>
@@ -1832,35 +1790,12 @@ function Payment() {
                                     </h2>
 
                                     <p>
-                                        Enter demo card information
+                                        Enter your payment information
                                     </p>
 
                                 </div>
 
                             </div>
-
-
-                            <button
-                                type="button"
-                                className="payment-demo-card"
-                                onClick={
-                                    fillDemoCard
-                                }
-                            >
-
-                                <CreditCard
-                                    size={
-                                        17
-                                    }
-                                />
-
-                                Use Demo Card
-
-                                <span>
-                                    Assignment Mode
-                                </span>
-
-                            </button>
 
 
                             <div className="payment-form">
@@ -1884,7 +1819,7 @@ function Payment() {
                                                         .value
                                                 )
                                         }
-                                        placeholder="John Doe"
+                                        placeholder="Name on card"
                                         autoComplete="off"
                                     />
 
@@ -1916,7 +1851,7 @@ function Payment() {
                                                         )
                                                     )
                                             }
-                                            placeholder="4242 4242 4242 4242"
+                                            placeholder="0000 0000 0000 0000"
                                             autoComplete="off"
                                         />
 
@@ -1959,7 +1894,7 @@ function Payment() {
                                 <label>
 
                                     <span>
-                                        CVV
+                                        Security Code
                                     </span>
 
 
@@ -1968,9 +1903,7 @@ function Payment() {
                                         <input
                                             type="password"
                                             inputMode="numeric"
-                                            maxLength={
-                                                4
-                                            }
+                                            maxLength={4}
                                             value={
                                                 cvv
                                             }
@@ -1987,7 +1920,7 @@ function Payment() {
                                                         )
                                                     )
                                             }
-                                            placeholder="123"
+                                            placeholder="CVV"
                                             autoComplete="off"
                                         />
 
@@ -2021,7 +1954,7 @@ function Payment() {
                                     <Check />
                                 </span>
 
-                                Remember card name and last 4 digits for this demo
+                                Save this payment method for future bookings
 
                             </label>
 
@@ -2029,7 +1962,19 @@ function Payment() {
                     ) : (
                         <div className="payment-wallet-panel">
 
-                            <WalletCards />
+                            <div className="payment-wallet-logo">
+
+                                {(() => {
+                                    const Icon =
+                                        selectedMethod.Icon;
+
+                                    return (
+                                        <Icon />
+                                    );
+                                })()}
+
+                            </div>
+
 
                             <div>
 
@@ -2040,7 +1985,7 @@ function Payment() {
                                 </strong>
 
                                 <p>
-                                    This is an assignment demonstration. No external wallet or real money transaction will be started.
+                                    Continue below to confirm your booking using the selected payment method.
                                 </p>
 
                             </div>
@@ -2054,7 +1999,7 @@ function Payment() {
                         <ShieldCheck />
 
                         <span>
-                            Demo mode is enabled. Full card numbers and CVV values are not stored in the Centuria database.
+                            Card number and security code are not saved with your booking record.
                         </span>
 
                     </div>
@@ -2100,7 +2045,7 @@ function Payment() {
                         >
 
                             {loading
-                                ? "Processing Demo Payment..."
+                                ? "Processing..."
                                 : `Confirm & Pay ${money(
                                       summary.total
                                   )}`}
@@ -2133,7 +2078,7 @@ function Payment() {
                             </h2>
 
                             <p>
-                                Review your selection before confirmation
+                                Review your selected service
                             </p>
 
                         </div>
@@ -2454,16 +2399,15 @@ function Payment() {
 
                     <div className="payment-pending-note">
 
-                        <ShieldCheck />
+                        <Clock3 />
 
                         <span>
-                            After demo payment, this booking will be stored with
+                            Booking status:
                             <strong>
                                 {" "}
                                 Pending
                             </strong>
-                            {" "}
-                            status until the admin accepts or declines it.
+                            . Your reservation will be confirmed after approval by Centuria Lake Resort.
                         </span>
 
                     </div>
@@ -2492,7 +2436,9 @@ function Payment() {
 
 
                         <div className="payment-success-icon">
+
                             <CheckCircle2 />
+
                         </div>
 
 
@@ -2507,7 +2453,7 @@ function Payment() {
 
 
                         <p>
-                            Demo payment completed and your booking was submitted successfully.
+                            Your booking request has been submitted successfully.
                         </p>
 
 
@@ -2526,17 +2472,37 @@ function Payment() {
                         </div>
 
 
+                        <div className="payment-success-amount">
+
+                            <span>
+                                Total
+                            </span>
+
+                            <strong>
+                                {money(
+                                    success.total
+                                )}
+                            </strong>
+
+                        </div>
+
+
                         <div className="payment-success-pending">
 
                             <Clock3 />
 
                             <span>
-                                Your booking is now
+                                Your booking is currently
                                 <strong>
                                     {" "}
                                     Pending
                                 </strong>
-                                . The admin can accept or decline it from the Admin Dashboard.
+                                . Once the administrator accepts the booking, the status will change to
+                                <strong>
+                                    {" "}
+                                    Confirmed
+                                </strong>
+                                .
                             </span>
 
                         </div>
@@ -2546,27 +2512,11 @@ function Payment() {
 
                             <button
                                 type="button"
-                                onClick={() => {
+                                onClick={() =>
                                     navigate(
-                                        "/customer-dashboard"
-                                    );
-
-                                    window.setTimeout(
-                                        () => {
-                                            document
-                                                .getElementById(
-                                                    "customer-orders-section"
-                                                )
-                                                ?.scrollIntoView({
-                                                    behavior:
-                                                        "smooth",
-                                                    block:
-                                                        "start"
-                                                });
-                                        },
-                                        400
-                                    );
-                                }}
+                                        "/customer-dashboard#customer-orders-section"
+                                    )
+                                }
                             >
                                 View My Bookings
                             </button>
