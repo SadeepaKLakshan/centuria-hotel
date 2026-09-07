@@ -2,200 +2,402 @@
 
 declare(strict_types=1);
 
-header('Content-Type: application/json; charset=utf-8');
-header('Access-Control-Allow-Origin: http://localhost:5173');
-header('Access-Control-Allow-Headers: Content-Type');
-header('Access-Control-Allow-Methods: POST, OPTIONS');
-
-if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
-    http_response_code(204);
-    exit;
-}
-
+require_once __DIR__ . '/../config/cors.php';
 require_once __DIR__ . '/../config/database.php';
+require_once __DIR__ . '/../auth/auth-middleware.php';
 
-function respond(
-    bool $success,
-    string $message,
-    array $extra = [],
-    int $statusCode = 200
+applyCors();
+
+header(
+    'Content-Type: application/json; charset=utf-8'
+);
+
+function profileResponse(
+    int $status,
+    array $payload
 ): never {
-    http_response_code($statusCode);
+    http_response_code($status);
 
     echo json_encode(
-        array_merge(
-            [
-                'success' => $success,
-                'message' => $message
-            ],
-            $extra
-        ),
+        $payload,
         JSON_UNESCAPED_SLASHES
     );
 
     exit;
 }
 
-if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
-    respond(
-        false,
-        'Only POST requests are allowed.',
-        [],
-        405
-    );
-}
-
-try {
-    $input = json_decode(
-        file_get_contents('php://input'),
-        true
-    );
-
-    if (!is_array($input)) {
-        respond(
-            false,
-            'Invalid request data.',
-            [],
-            400
-        );
-    }
-
-    $email = strtolower(
-        trim(
-            (string)($input['email'] ?? '')
-        )
-    );
-
-    if (
-        $email === '' ||
-        !filter_var(
-            $email,
-            FILTER_VALIDATE_EMAIL
-        )
-    ) {
-        respond(
-            false,
-            'A valid email address is required.',
-            [],
-            422
-        );
-    }
-
-    $pdo = getDatabaseConnection();
-
+function getCustomerProfile(
+    PDO $pdo,
+    int $userId
+): array {
     $statement = $pdo->prepare(
         'SELECT
             id,
             full_name,
             email,
             phone,
+            country_code,
             country,
             role,
-            profile_image,
+            is_verified,
             account_status,
-            last_login_at
+            profile_image,
+            email_verified_at,
+            phone_verified_at,
+            last_login_at,
+            created_at,
+            updated_at
          FROM users
-         WHERE email = :email
+         WHERE id = :id
          LIMIT 1'
     );
 
     $statement->execute([
-        'email' => $email
+        'id' => $userId
     ]);
 
-    $user = $statement->fetch();
+    $user = $statement->fetch(
+        PDO::FETCH_ASSOC
+    );
 
     if (!$user) {
-        respond(
-            false,
-            'Customer account was not found.',
-            [],
-            404
+        throw new RuntimeException(
+            'Customer account was not found.'
         );
     }
 
-    if ($user['account_status'] !== 'active') {
-        respond(
-            false,
-            'This account is currently unavailable.',
-            [],
-            403
+    return [
+        'id' =>
+            (int)$user['id'],
+
+        'full_name' =>
+            (string)$user['full_name'],
+
+        'email' =>
+            (string)$user['email'],
+
+        'phone' =>
+            $user['phone'] ?? '',
+
+        'country_code' =>
+            $user['country_code'] ?? '',
+
+        'country' =>
+            $user['country'] ?? 'Sri Lanka',
+
+        'role' =>
+            strtolower(
+                (string)$user['role']
+            ),
+
+        'is_verified' =>
+            (int)$user['is_verified'],
+
+        'account_status' =>
+            (string)$user['account_status'],
+
+        'profile_image' =>
+            $user['profile_image'] ?? '',
+
+        'email_verified_at' =>
+            $user['email_verified_at'] ?? null,
+
+        'phone_verified_at' =>
+            $user['phone_verified_at'] ?? null,
+
+        'last_login_at' =>
+            $user['last_login_at'] ?? null,
+
+        'created_at' =>
+            $user['created_at'] ?? null,
+
+        'updated_at' =>
+            $user['updated_at'] ?? null
+    ];
+}
+
+try {
+    $customer =
+        requireCustomer();
+
+    $pdo =
+        getDatabaseConnection();
+
+    $method =
+        strtoupper(
+            (string)(
+                $_SERVER[
+                    'REQUEST_METHOD'
+                ] ?? ''
+            )
+        );
+
+    if ($method === 'GET') {
+        profileResponse(
+            200,
+            [
+                'success' => true,
+
+                'user' =>
+                    getCustomerProfile(
+                        $pdo,
+                        (int)$customer['id']
+                    )
+            ]
         );
     }
-
-    $profileImage = '';
 
     if (
-        !empty($user['profile_image'])
+        !in_array(
+            $method,
+            [
+                'PUT',
+                'PATCH'
+            ],
+            true
+        )
     ) {
-        if (
-            str_starts_with(
-                (string)$user['profile_image'],
-                'http://'
-            ) ||
-            str_starts_with(
-                (string)$user['profile_image'],
-                'https://'
-            )
-        ) {
-            $profileImage =
-                (string)$user['profile_image'];
-        } else {
-            $profileImage =
-                'http://localhost/centuria-hotel/backend/' .
-                ltrim(
-                    (string)$user['profile_image'],
-                    '/'
-                );
-        }
+        profileResponse(
+            405,
+            [
+                'success' => false,
+                'message' =>
+                    'Method not allowed.'
+            ]
+        );
     }
 
-    respond(
-        true,
-        'Customer profile loaded successfully.',
-        [
-            'user' => [
-                'id' =>
-                    (int)$user['id'],
+    $input =
+        json_decode(
+            file_get_contents(
+                'php://input'
+            ),
+            true
+        );
 
-                'full_name' =>
-                    (string)$user['full_name'],
+    if (!is_array($input)) {
+        $input = [];
+    }
 
-                'email' =>
-                    (string)$user['email'],
+    $fullName =
+        trim(
+            (string)(
+                $input[
+                    'full_name'
+                ] ?? ''
+            )
+        );
 
-                'phone' =>
-                    (string)($user['phone'] ?? ''),
+    $phone =
+        trim(
+            (string)(
+                $input[
+                    'phone'
+                ] ?? ''
+            )
+        );
 
-                'country' =>
-                    (string)($user['country'] ?? 'Sri Lanka'),
+    $country =
+        trim(
+            (string)(
+                $input[
+                    'country'
+                ] ?? ''
+            )
+        );
 
-                'role' =>
-                    strtolower(
-                        (string)$user['role']
-                    ),
+    $countryCode =
+        trim(
+            (string)(
+                $input[
+                    'country_code'
+                ] ?? ''
+            )
+        );
 
-                'profile_image' =>
-                    $profileImage,
+    $profileImage =
+        trim(
+            (string)(
+                $input[
+                    'profile_image'
+                ] ?? ''
+            )
+        );
 
-                'account_status' =>
-                    (string)$user['account_status'],
-
-                'last_login_at' =>
-                    $user['last_login_at']
+    if (
+        $fullName === '' ||
+        mb_strlen(
+            $fullName
+        ) > 150
+    ) {
+        profileResponse(
+            422,
+            [
+                'success' => false,
+                'message' =>
+                    'Please enter a valid full name.'
             ]
+        );
+    }
+
+    if (
+        mb_strlen(
+            $phone
+        ) > 40
+    ) {
+        profileResponse(
+            422,
+            [
+                'success' => false,
+                'message' =>
+                    'Phone number is too long.'
+            ]
+        );
+    }
+
+    if (
+        mb_strlen(
+            $country
+        ) > 100
+    ) {
+        profileResponse(
+            422,
+            [
+                'success' => false,
+                'message' =>
+                    'Country value is too long.'
+            ]
+        );
+    }
+
+    if (
+        mb_strlen(
+            $countryCode
+        ) > 10
+    ) {
+        profileResponse(
+            422,
+            [
+                'success' => false,
+                'message' =>
+                    'Country code is too long.'
+            ]
+        );
+    }
+
+    if (
+        $profileImage !== '' &&
+        !str_starts_with(
+            $profileImage,
+            'data:image/'
+        ) &&
+        !filter_var(
+            $profileImage,
+            FILTER_VALIDATE_URL
+        )
+    ) {
+        profileResponse(
+            422,
+            [
+                'success' => false,
+                'message' =>
+                    'Invalid profile image.'
+            ]
+        );
+    }
+
+    if (
+        strlen(
+            $profileImage
+        ) > 2500000
+    ) {
+        profileResponse(
+            413,
+            [
+                'success' => false,
+                'message' =>
+                    'Profile image is too large.'
+            ]
+        );
+    }
+
+    $statement =
+        $pdo->prepare(
+            'UPDATE users
+             SET
+                full_name =
+                    :full_name,
+                phone =
+                    :phone,
+                country_code =
+                    :country_code,
+                country =
+                    :country,
+                profile_image =
+                    :profile_image
+             WHERE id = :id'
+        );
+
+    $statement->execute([
+        'full_name' =>
+            $fullName,
+
+        'phone' =>
+            $phone !== ''
+                ? $phone
+                : null,
+
+        'country_code' =>
+            $countryCode !== ''
+                ? $countryCode
+                : null,
+
+        'country' =>
+            $country !== ''
+                ? $country
+                : 'Sri Lanka',
+
+        'profile_image' =>
+            $profileImage !== ''
+                ? $profileImage
+                : null,
+
+        'id' =>
+            (int)$customer['id']
+    ]);
+
+    $updatedUser =
+        getCustomerProfile(
+            $pdo,
+            (int)$customer['id']
+        );
+
+    profileResponse(
+        200,
+        [
+            'success' => true,
+
+            'message' =>
+                'Customer profile saved successfully.',
+
+            'user' =>
+                $updatedUser
         ]
     );
-} catch (Throwable $e) {
+} catch (Throwable $error) {
     error_log(
         'Customer profile error: ' .
-        $e->getMessage()
+        $error->getMessage()
     );
 
-    respond(
-        false,
-        'Customer profile could not be loaded.',
-        [],
-        500
+    profileResponse(
+        500,
+        [
+            'success' => false,
+            'message' =>
+                'Unable to update customer profile.',
+            'error' =>
+                $error->getMessage()
+        ]
     );
 }
