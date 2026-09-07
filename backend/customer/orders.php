@@ -4,99 +4,265 @@ declare(strict_types=1);
 
 require_once __DIR__ . '/../config/cors.php';
 require_once __DIR__ . '/../config/database.php';
-require_once __DIR__ . '/../config/auth-middleware.php';
+require_once __DIR__ . '/../auth/auth-middleware.php';
 
 applyCors();
 
-function respond(
-    bool $success,
-    string $message,
-    array $extra = [],
-    int $statusCode = 200
+header(
+    'Content-Type: application/json; charset=utf-8'
+);
+
+function orderResponse(
+    int $status,
+    array $payload
 ): never {
-    http_response_code($statusCode);
+    http_response_code($status);
 
     echo json_encode(
-        array_merge(
-            [
-                'success' => $success,
-                'message' => $message
-            ],
-            $extra
-        ),
+        $payload,
         JSON_UNESCAPED_SLASHES
     );
 
     exit;
 }
 
-if ($_SERVER['REQUEST_METHOD'] !== 'GET') {
-    respond(
-        false,
-        'Only GET requests are allowed.',
-        [],
-        405
-    );
-}
-
 try {
-    $user = authenticateUser();
+    if (
+        ($_SERVER['REQUEST_METHOD'] ?? '') !==
+        'GET'
+    ) {
+        orderResponse(
+            405,
+            [
+                'success' => false,
+                'message' =>
+                    'Method not allowed.'
+            ]
+        );
+    }
 
-    requireRole(
-        $user,
-        ['customer']
-    );
+    $customer =
+        requireCustomer();
 
-    $pdo = getDatabaseConnection();
+    $pdo =
+        getDatabaseConnection();
 
-    $statement = $pdo->prepare(
-        'SELECT
-            id,
-            order_number,
-            order_type,
-            title,
-            description,
-            total_amount,
-            currency,
-            status,
-            payment_status,
-            customer_note,
-            admin_note,
-            requested_date,
-            requested_time,
-            accepted_at,
-            declined_at,
-            completed_at,
-            created_at,
-            updated_at
-         FROM customer_orders
-         WHERE customer_id = :customer_id
-         ORDER BY created_at DESC'
-    );
+    $statement =
+        $pdo->prepare(
+            'SELECT
+                co.id,
+                co.order_number,
+                co.order_type,
+                co.title,
+                co.description,
+                co.status,
+                co.total_amount,
+                co.currency,
+                co.decline_reason,
+                co.assigned_admin_id,
+                co.created_at,
+                co.updated_at,
+                co.accepted_at,
+                co.confirmed_at,
+                co.completed_at,
+                u.full_name AS assigned_admin_name
+             FROM customer_orders co
+             LEFT JOIN users u
+                ON u.id =
+                    co.assigned_admin_id
+             WHERE co.user_id = :user_id
+             ORDER BY
+                co.created_at DESC,
+                co.id DESC'
+        );
 
     $statement->execute([
-        'customer_id' => $user['id']
+        'user_id' =>
+            (int)$customer['id']
     ]);
 
-    $orders = $statement->fetchAll();
+    $orders =
+        $statement->fetchAll(
+            PDO::FETCH_ASSOC
+        );
 
-    respond(
-        true,
-        'Orders loaded successfully.',
+    $result = [];
+
+    foreach (
+        $orders as $order
+    ) {
+        $historyStatement =
+            $pdo->prepare(
+                'SELECT
+                    id,
+                    status,
+                    note,
+                    created_at
+                 FROM order_status_history
+                 WHERE order_id = :order_id
+                 ORDER BY
+                    created_at ASC,
+                    id ASC'
+            );
+
+        $historyStatement->execute([
+            'order_id' =>
+                (int)$order['id']
+        ]);
+
+        $history =
+            $historyStatement->fetchAll(
+                PDO::FETCH_ASSOC
+            );
+
+        $itemsStatement =
+            $pdo->prepare(
+                'SELECT
+                    id,
+                    item_name,
+                    quantity,
+                    unit_price,
+                    subtotal
+                 FROM order_items
+                 WHERE order_id = :order_id
+                 ORDER BY id ASC'
+            );
+
+        $itemsStatement->execute([
+            'order_id' =>
+                (int)$order['id']
+        ]);
+
+        $items =
+            $itemsStatement->fetchAll(
+                PDO::FETCH_ASSOC
+            );
+
+        $result[] = [
+            'id' =>
+                (int)$order['id'],
+
+            'order_number' =>
+                $order[
+                    'order_number'
+                ] ?? null,
+
+            'order_type' =>
+                $order[
+                    'order_type'
+                ] ?? '',
+
+            'title' =>
+                $order[
+                    'title'
+                ] ?? '',
+
+            'description' =>
+                $order[
+                    'description'
+                ] ?? '',
+
+            'status' =>
+                strtolower(
+                    (string)(
+                        $order[
+                            'status'
+                        ] ?? 'pending'
+                    )
+                ),
+
+            'total_amount' =>
+                (float)(
+                    $order[
+                        'total_amount'
+                    ] ?? 0
+                ),
+
+            'currency' =>
+                $order[
+                    'currency'
+                ] ?? 'LKR',
+
+            'decline_reason' =>
+                $order[
+                    'decline_reason'
+                ] ?? null,
+
+            'assigned_admin_id' =>
+                $order[
+                    'assigned_admin_id'
+                ] !== null
+                    ? (int)$order[
+                        'assigned_admin_id'
+                    ]
+                    : null,
+
+            'assigned_admin_name' =>
+                $order[
+                    'assigned_admin_name'
+                ] ?? null,
+
+            'created_at' =>
+                $order[
+                    'created_at'
+                ] ?? null,
+
+            'updated_at' =>
+                $order[
+                    'updated_at'
+                ] ?? null,
+
+            'accepted_at' =>
+                $order[
+                    'accepted_at'
+                ] ?? null,
+
+            'confirmed_at' =>
+                $order[
+                    'confirmed_at'
+                ] ?? null,
+
+            'completed_at' =>
+                $order[
+                    'completed_at'
+                ] ?? null,
+
+            'items' =>
+                $items,
+
+            'history' =>
+                $history
+        ];
+    }
+
+    orderResponse(
+        200,
         [
-            'orders' => $orders
+            'success' => true,
+
+            'total' =>
+                count($result),
+
+            'orders' =>
+                $result
         ]
     );
-} catch (Throwable $e) {
+} catch (Throwable $error) {
     error_log(
         'Customer orders error: ' .
-        $e->getMessage()
+        $error->getMessage()
     );
 
-    respond(
-        false,
-        'Orders could not be loaded.',
-        [],
-        500
+    orderResponse(
+        500,
+        [
+            'success' => false,
+
+            'message' =>
+                'Unable to load customer orders.',
+
+            'error' =>
+                $error->getMessage()
+        ]
     );
 }
