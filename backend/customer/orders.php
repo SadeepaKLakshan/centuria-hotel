@@ -4,49 +4,85 @@ declare(strict_types=1);
 
 require_once __DIR__ . '/../config/database.php';
 
-$corsFile = __DIR__ . '/../config/cors.php';
+$corsFile =
+    __DIR__ .
+    '/../config/cors.php';
 
-if (file_exists($corsFile)) {
+if (
+    file_exists(
+        $corsFile
+    )
+) {
     require_once $corsFile;
 }
 
-if (function_exists('applyCors')) {
+if (
+    function_exists(
+        'applyCors'
+    )
+) {
     applyCors();
 } else {
-    $origin = $_SERVER['HTTP_ORIGIN'] ?? '*';
+    $origin =
+        $_SERVER[
+            'HTTP_ORIGIN'
+        ] ?? '*';
 
-    header('Access-Control-Allow-Origin: ' . $origin);
-    header('Vary: Origin');
-    header('Access-Control-Allow-Headers: Content-Type, Authorization');
-    header('Access-Control-Allow-Methods: GET, OPTIONS');
+    header(
+        'Access-Control-Allow-Origin: ' .
+        $origin
+    );
+
+    header(
+        'Access-Control-Allow-Headers: Content-Type, Authorization'
+    );
+
+    header(
+        'Access-Control-Allow-Methods: GET, OPTIONS'
+    );
+
+    header(
+        'Vary: Origin'
+    );
 }
 
-header('Content-Type: application/json; charset=utf-8');
+header(
+    'Content-Type: application/json; charset=utf-8'
+);
 
 if (
-    ($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'OPTIONS'
+    ($_SERVER[
+        'REQUEST_METHOD'
+    ] ?? 'GET') ===
+    'OPTIONS'
 ) {
     http_response_code(204);
     exit;
 }
 
 if (
-    ($_SERVER['REQUEST_METHOD'] ?? 'GET') !== 'GET'
+    ($_SERVER[
+        'REQUEST_METHOD'
+    ] ?? '') !==
+    'GET'
 ) {
     http_response_code(405);
 
     echo json_encode([
         'success' => false,
-        'message' => 'Method not allowed.'
+        'message' =>
+            'Method not allowed.'
     ]);
 
     exit;
 }
 
-require_once __DIR__ . '/../auth/auth-middleware.php';
+require_once
+    __DIR__ .
+    '/../auth/auth-middleware.php';
 
 
-function getOrdersDatabase(): PDO
+function ordersDatabase(): PDO
 {
     global $pdo;
 
@@ -62,29 +98,53 @@ function getOrdersDatabase(): PDO
             'getDatabaseConnection'
         )
     ) {
-        $connection =
+        $database =
             getDatabaseConnection();
 
         if (
-            $connection instanceof PDO
+            $database instanceof PDO
         ) {
-            return $connection;
+            return $database;
         }
     }
 
     throw new RuntimeException(
-        'Database connection is unavailable.'
+        'Database connection unavailable.'
     );
 }
 
 
-function getTableColumns(
+function ordersTableExists(
+    PDO $database,
+    string $table
+): bool {
+    $statement =
+        $database->prepare(
+            'SELECT COUNT(*)
+             FROM information_schema.tables
+             WHERE table_schema = DATABASE()
+             AND table_name = :table'
+        );
+
+    $statement->execute([
+        'table' => $table
+    ]);
+
+    return (
+        (int)$statement->fetchColumn() >
+        0
+    );
+}
+
+
+function ordersColumns(
     PDO $database,
     string $table
 ): array {
     $statement =
         $database->query(
-            "SHOW COLUMNS FROM `{$table}`"
+            "SHOW COLUMNS
+             FROM `{$table}`"
         );
 
     $rows =
@@ -94,12 +154,19 @@ function getTableColumns(
 
     $columns = [];
 
-    foreach ($rows as $row) {
+    foreach (
+        $rows
+        as $row
+    ) {
         if (
-            isset($row['Field'])
+            isset(
+                $row['Field']
+            )
         ) {
             $columns[] =
-                (string)$row['Field'];
+                (string)$row[
+                    'Field'
+                ];
         }
     }
 
@@ -107,7 +174,7 @@ function getTableColumns(
 }
 
 
-function hasColumn(
+function hasOrdersColumn(
     array $columns,
     string $column
 ): bool {
@@ -119,56 +186,10 @@ function hasColumn(
 }
 
 
-function safeColumn(
-    string $column
-): string {
-    if (
-        !preg_match(
-            '/^[A-Za-z0-9_]+$/',
-            $column
-        )
-    ) {
-        throw new RuntimeException(
-            'Invalid database column.'
-        );
-    }
-
-    return "`{$column}`";
-}
-
-
-function decodeJsonValue(
-    mixed $value
-): array {
-    if (
-        is_array($value)
-    ) {
-        return $value;
-    }
-
-    if (
-        !is_string($value) ||
-        trim($value) === ''
-    ) {
-        return [];
-    }
-
-    $decoded =
-        json_decode(
-            $value,
-            true
-        );
-
-    return is_array($decoded)
-        ? $decoded
-        : [];
-}
-
-
-function getOrderDetails(
+function decodeOrderDetails(
     array $order
 ): array {
-    $possibleFields = [
+    $fields = [
         'details',
         'details_json',
         'order_details',
@@ -178,25 +199,43 @@ function getOrderDetails(
     ];
 
     foreach (
-        $possibleFields
+        $fields
         as $field
     ) {
         if (
-            !array_key_exists(
-                $field,
-                $order
+            !isset(
+                $order[$field]
+            )
+        ) {
+            continue;
+        }
+
+        if (
+            is_array(
+                $order[$field]
+            )
+        ) {
+            return $order[$field];
+        }
+
+        if (
+            !is_string(
+                $order[$field]
             )
         ) {
             continue;
         }
 
         $decoded =
-            decodeJsonValue(
-                $order[$field]
+            json_decode(
+                $order[$field],
+                true
             );
 
         if (
-            !empty($decoded)
+            is_array(
+                $decoded
+            )
         ) {
             return $decoded;
         }
@@ -206,109 +245,7 @@ function getOrderDetails(
 }
 
 
-function cleanEmail(
-    mixed $value
-): string {
-    return strtolower(
-        trim(
-            (string)$value
-        )
-    );
-}
-
-
-function cleanId(
-    mixed $value
-): int {
-    if (
-        $value === null ||
-        $value === ''
-    ) {
-        return 0;
-    }
-
-    return (int)$value;
-}
-
-
-function orderBelongsToCustomer(
-    array $order,
-    array $details,
-    array $user
-): bool {
-    $userId =
-        cleanId(
-            $user['id'] ?? 0
-        );
-
-    $userEmail =
-        cleanEmail(
-            $user['email'] ?? ''
-        );
-
-    $idCandidates = [
-        $order['user_id'] ?? null,
-        $order['customer_id'] ?? null,
-        $order['customer_user_id'] ?? null,
-
-        $details['user_id'] ?? null,
-        $details['customer_id'] ?? null,
-        $details['customer_user_id'] ?? null
-    ];
-
-    foreach (
-        $idCandidates
-        as $candidate
-    ) {
-        $candidateId =
-            cleanId(
-                $candidate
-            );
-
-        if (
-            $userId > 0 &&
-            $candidateId > 0 &&
-            $candidateId ===
-                $userId
-        ) {
-            return true;
-        }
-    }
-
-    $emailCandidates = [
-        $order['customer_email'] ?? null,
-        $order['email'] ?? null,
-
-        $details['customer_email'] ?? null,
-        $details['email'] ?? null,
-
-        $details['customerEmail'] ?? null
-    ];
-
-    foreach (
-        $emailCandidates
-        as $candidate
-    ) {
-        $candidateEmail =
-            cleanEmail(
-                $candidate
-            );
-
-        if (
-            $userEmail !== '' &&
-            $candidateEmail !== '' &&
-            $candidateEmail ===
-                $userEmail
-        ) {
-            return true;
-        }
-    }
-
-    return false;
-}
-
-
-function mergeDetailsIntoOrder(
+function mergeOrderDetails(
     array $order,
     array $details
 ): array {
@@ -321,8 +258,10 @@ function mergeDetailsIntoOrder(
                 $key,
                 $order
             ) ||
-            $order[$key] === null ||
-            $order[$key] === ''
+            $order[$key] ===
+                null ||
+            $order[$key] ===
+                ''
         ) {
             $order[$key] =
                 $value;
@@ -333,281 +272,18 @@ function mergeDetailsIntoOrder(
 }
 
 
-function normalizeCustomerOrder(
-    array $order
-): array {
-    $details =
-        getOrderDetails(
-            $order
-        );
-
-    $order =
-        mergeDetailsIntoOrder(
-            $order,
-            $details
-        );
-
-    $actualStatus =
-        strtolower(
-            trim(
-                (string)(
-                    $order['status'] ??
-                    'pending'
-                )
-            )
-        );
-
-    $order['admin_status'] =
-        $actualStatus;
-
-    if (
-        $actualStatus ===
-        'accepted'
-    ) {
-        $order['status'] =
-            'confirmed';
-    } else {
-        $order['status'] =
-            $actualStatus !== ''
-                ? $actualStatus
-                : 'pending';
-    }
-
-    if (
-        empty(
-            $order['title']
-        )
-    ) {
-        $order['title'] =
-            $details['title'] ??
-            $details['name'] ??
-            'Centuria Booking';
-    }
-
-    if (
-        empty(
-            $order['description']
-        )
-    ) {
-        $order['description'] =
-            $details['description'] ??
-            '';
-    }
-
-    if (
-        empty(
-            $order['order_type']
-        )
-    ) {
-        $order['order_type'] =
-            $details['order_type'] ??
-            $details['service_type'] ??
-            $details['type'] ??
-            'service';
-    }
-
-    if (
-        empty(
-            $order['service_type']
-        )
-    ) {
-        $order['service_type'] =
-            $details['service_type'] ??
-            $details['type'] ??
-            $order['order_type'];
-    }
-
-    if (
-        !isset(
-            $order['total_amount']
-        ) ||
-        $order['total_amount'] ===
-            null ||
-        $order['total_amount'] ===
-            ''
-    ) {
-        $order['total_amount'] =
-            $order['amount'] ??
-            $details['total_amount'] ??
-            $details['total'] ??
-            0;
-    }
-
-    if (
-        empty(
-            $order['currency']
-        )
-    ) {
-        $order['currency'] =
-            'LKR';
-    }
-
-    if (
-        empty(
-            $order['image']
-        )
-    ) {
-        $order['image'] =
-            $details['image'] ??
-            $details['image_url'] ??
-            $details['imageUrl'] ??
-            '';
-    }
-
-    if (
-        empty(
-            $order['guest_type']
-        )
-    ) {
-        $order['guest_type'] =
-            $details['guest_type'] ??
-            $details['guestType'] ??
-            '';
-    }
-
-    if (
-        empty(
-            $order['duration']
-        )
-    ) {
-        $order['duration'] =
-            $details['duration'] ??
-            '';
-    }
-
-    if (
-        empty(
-            $order['booking_date']
-        )
-    ) {
-        $order['booking_date'] =
-            $details['booking_date'] ??
-            $details['date'] ??
-            '';
-    }
-
-    if (
-        empty(
-            $order['booking_time']
-        )
-    ) {
-        $order['booking_time'] =
-            $details['booking_time'] ??
-            $details['time'] ??
-            '';
-    }
-
-    if (
-        empty(
-            $order['portion']
-        )
-    ) {
-        $order['portion'] =
-            $details['portion'] ??
-            '';
-    }
-
-    if (
-        empty(
-            $order['spice']
-        )
-    ) {
-        $order['spice'] =
-            $details['spice'] ??
-            '';
-    }
-
-    if (
-        empty(
-            $order['transport']
-        )
-    ) {
-        $order['transport'] =
-            $details['transport'] ??
-            '';
-    }
-
-    if (
-        empty(
-            $order['quantity']
-        )
-    ) {
-        $order['quantity'] =
-            $details['quantity'] ??
-            $details['sessions'] ??
-            1;
-    }
-
-    $order['details'] =
-        $details;
-
-    return $order;
-}
-
-
-function getOrderSortColumn(
-    array $columns
-): string {
-    $preferred = [
-        'created_at',
-        'createdAt',
-        'id'
-    ];
-
-    foreach (
-        $preferred
-        as $column
-    ) {
-        if (
-            hasColumn(
-                $columns,
-                $column
-            )
-        ) {
-            return $column;
-        }
-    }
-
-    return '';
-}
-
-
-try {
-    $user =
-        requireCustomer();
-
-    $database =
-        getOrdersDatabase();
-
-    $database->setAttribute(
-        PDO::ATTR_ERRMODE,
-        PDO::ERRMODE_EXCEPTION
-    );
-
-    $columns =
-        getTableColumns(
-            $database,
-            'customer_orders'
-        );
-
-    if (
-        empty($columns)
-    ) {
-        throw new RuntimeException(
-            'Customer orders table is unavailable.'
-        );
-    }
-
-    $conditions = [];
-    $parameters = [];
-
-    $customerId =
+function customerOwnsOrder(
+    array $order,
+    array $details,
+    array $user
+): bool {
+    $userId =
         (int)(
             $user['id'] ??
             0
         );
 
-    $customerEmail =
+    $email =
         strtolower(
             trim(
                 (string)(
@@ -617,97 +293,440 @@ try {
             )
         );
 
-    $idColumns = [
-        'user_id',
-        'customer_id',
-        'customer_user_id'
+    $ids = [
+        $order['user_id'] ??
+            null,
+
+        $order['customer_id'] ??
+            null,
+
+        $details['user_id'] ??
+            null,
+
+        $details['customer_id'] ??
+            null
     ];
 
-    $idIndex = 0;
-
     foreach (
-        $idColumns
-        as $column
+        $ids
+        as $candidate
     ) {
         if (
-            !hasColumn(
-                $columns,
-                $column
-            ) ||
-            $customerId <= 0
+            $userId > 0 &&
+            (int)$candidate ===
+                $userId
         ) {
-            continue;
+            return true;
         }
-
-        $placeholder =
-            ':customer_id_' .
-            $idIndex;
-
-        $conditions[] =
-            safeColumn(
-                $column
-            ) .
-            " = {$placeholder}";
-
-        $parameters[
-            $placeholder
-        ] = $customerId;
-
-        $idIndex++;
     }
 
-    $emailColumns = [
-        'customer_email',
-        'email'
+    $emails = [
+        $order[
+            'customer_email'
+        ] ?? null,
+
+        $order[
+            'email'
+        ] ?? null,
+
+        $details[
+            'customer_email'
+        ] ?? null,
+
+        $details[
+            'email'
+        ] ?? null
     ];
 
-    $emailIndex = 0;
-
     foreach (
-        $emailColumns
-        as $column
+        $emails
+        as $candidate
     ) {
+        $candidate =
+            strtolower(
+                trim(
+                    (string)$candidate
+                )
+            );
+
         if (
-            !hasColumn(
-                $columns,
-                $column
-            ) ||
-            $customerEmail === ''
+            $email !== '' &&
+            $candidate !== '' &&
+            $email ===
+                $candidate
         ) {
-            continue;
+            return true;
         }
+    }
 
-        $placeholder =
-            ':customer_email_' .
-            $emailIndex;
+    return false;
+}
 
+
+function shouldHideCustomerOrder(
+    array $order
+): bool {
+    $status =
+        strtolower(
+            trim(
+                (string)(
+                    $order['status'] ??
+                    'pending'
+                )
+            )
+        );
+
+    if (
+        $status ===
+        'cancelled'
+    ) {
+        return true;
+    }
+
+    if (
+        !in_array(
+            $status,
+            [
+                'delivered',
+                'used'
+            ],
+            true
+        )
+    ) {
+        return false;
+    }
+
+    $source =
+        $order[
+            'status_updated_at'
+        ] ??
+        $order[
+            'updated_at'
+        ] ??
+        $order[
+            'created_at'
+        ] ??
+        null;
+
+    if (
+        !$source
+    ) {
+        return false;
+    }
+
+    $timestamp =
+        strtotime(
+            (string)$source
+        );
+
+    if (
+        $timestamp === false
+    ) {
+        return false;
+    }
+
+    return (
+        $timestamp <=
+        time() - 86400
+    );
+}
+
+
+function loadOrderHistory(
+    PDO $database,
+    int $orderId
+): array {
+    if (
+        !ordersTableExists(
+            $database,
+            'order_status_history'
+        )
+    ) {
+        return [];
+    }
+
+    $columns =
+        ordersColumns(
+            $database,
+            'order_status_history'
+        );
+
+    if (
+        !hasOrdersColumn(
+            $columns,
+            'order_id'
+        )
+    ) {
+        return [];
+    }
+
+    $orderBy =
+        hasOrdersColumn(
+            $columns,
+            'created_at'
+        )
+            ? 'created_at ASC'
+            : 'id ASC';
+
+    $statement =
+        $database->prepare(
+            "SELECT *
+             FROM order_status_history
+             WHERE order_id = :order_id
+             ORDER BY {$orderBy}"
+        );
+
+    $statement->execute([
+        'order_id' =>
+            $orderId
+    ]);
+
+    return $statement->fetchAll(
+        PDO::FETCH_ASSOC
+    );
+}
+
+
+function prepareCustomerOrder(
+    PDO $database,
+    array $order
+): array {
+    $details =
+        decodeOrderDetails(
+            $order
+        );
+
+    $order =
+        mergeOrderDetails(
+            $order,
+            $details
+        );
+
+    $order['status'] =
+        strtolower(
+            trim(
+                (string)(
+                    $order[
+                        'status'
+                    ] ??
+                    'pending'
+                )
+            )
+        );
+
+    $order['title'] =
+        $order['title'] ??
+        $details['title'] ??
+        $details['name'] ??
+        'Centuria Booking';
+
+    $order['image'] =
+        $order['image'] ??
+        $details['image'] ??
+        $details['image_url'] ??
+        $details['imageUrl'] ??
+        '';
+
+    $order[
+        'service_type'
+    ] =
+        $order[
+            'service_type'
+        ] ??
+        $details[
+            'service_type'
+        ] ??
+        $details['type'] ??
+        $order[
+            'order_type'
+        ] ??
+        'service';
+
+    $order[
+        'total_amount'
+    ] =
+        $order[
+            'total_amount'
+        ] ??
+        $order['amount'] ??
+        $details[
+            'total_amount'
+        ] ??
+        $details['total'] ??
+        0;
+
+    $order['currency'] =
+        $order[
+            'currency'
+        ] ??
+        'LKR';
+
+    $order[
+        'booking_date'
+    ] =
+        $order[
+            'booking_date'
+        ] ??
+        $details[
+            'booking_date'
+        ] ??
+        $details['date'] ??
+        '';
+
+    $order[
+        'booking_time'
+    ] =
+        $order[
+            'booking_time'
+        ] ??
+        $details[
+            'booking_time'
+        ] ??
+        $details['time'] ??
+        '';
+
+    $order['duration'] =
+        $order[
+            'duration'
+        ] ??
+        $details[
+            'duration'
+        ] ??
+        '';
+
+    $order['guest_type'] =
+        $order[
+            'guest_type'
+        ] ??
+        $details[
+            'guest_type'
+        ] ??
+        $details[
+            'guestType'
+        ] ??
+        '';
+
+    $order['portion'] =
+        $order[
+            'portion'
+        ] ??
+        $details[
+            'portion'
+        ] ??
+        '';
+
+    $order['spice'] =
+        $order[
+            'spice'
+        ] ??
+        $details[
+            'spice'
+        ] ??
+        '';
+
+    $order['transport'] =
+        $order[
+            'transport'
+        ] ??
+        $details[
+            'transport'
+        ] ??
+        '';
+
+    $order['details'] =
+        $details;
+
+    $order['history'] =
+        loadOrderHistory(
+            $database,
+            (int)(
+                $order['id'] ??
+                0
+            )
+        );
+
+    return $order;
+}
+
+
+try {
+    $user =
+        requireCustomer();
+
+    $database =
+        ordersDatabase();
+
+    $database->setAttribute(
+        PDO::ATTR_ERRMODE,
+        PDO::ERRMODE_EXCEPTION
+    );
+
+    $columns =
+        ordersColumns(
+            $database,
+            'customer_orders'
+        );
+
+    $conditions = [];
+    $parameters = [];
+
+    if (
+        hasOrdersColumn(
+            $columns,
+            'user_id'
+        )
+    ) {
         $conditions[] =
-            'LOWER(' .
-            safeColumn(
-                $column
-            ) .
-            ") = LOWER({$placeholder})";
+            'user_id = :user_id';
 
         $parameters[
-            $placeholder
-        ] = $customerEmail;
+            'user_id'
+        ] =
+            (int)$user['id'];
+    }
 
-        $emailIndex++;
+    if (
+        hasOrdersColumn(
+            $columns,
+            'customer_id'
+        )
+    ) {
+        $conditions[] =
+            'customer_id = :customer_id';
+
+        $parameters[
+            'customer_id'
+        ] =
+            (int)$user['id'];
+    }
+
+    if (
+        hasOrdersColumn(
+            $columns,
+            'customer_email'
+        ) &&
+        !empty(
+            $user['email']
+        )
+    ) {
+        $conditions[] =
+            'LOWER(customer_email) = LOWER(:customer_email)';
+
+        $parameters[
+            'customer_email'
+        ] =
+            (string)$user[
+                'email'
+            ];
     }
 
     $sortColumn =
-        getOrderSortColumn(
-            $columns
-        );
-
-    $orderBy =
-        $sortColumn !== ''
-            ? ' ORDER BY ' .
-                safeColumn(
-                    $sortColumn
-                ) .
-                ' DESC'
-            : '';
+        hasOrdersColumn(
+            $columns,
+            'created_at'
+        )
+            ? 'created_at'
+            : 'id';
 
     $orders = [];
 
@@ -717,89 +736,41 @@ try {
         )
     ) {
         $sql =
-            'SELECT * FROM `customer_orders` WHERE ' .
+            'SELECT *
+             FROM customer_orders
+             WHERE ' .
             implode(
                 ' OR ',
                 $conditions
             ) .
-            $orderBy;
+            " ORDER BY {$sortColumn} DESC";
 
         $statement =
             $database->prepare(
                 $sql
             );
 
-        foreach (
+        $statement->execute(
             $parameters
-            as $placeholder =>
-                $value
-        ) {
-            if (
-                str_contains(
-                    $placeholder,
-                    'customer_id'
-                )
-            ) {
-                $statement->bindValue(
-                    $placeholder,
-                    (int)$value,
-                    PDO::PARAM_INT
-                );
-            } else {
-                $statement->bindValue(
-                    $placeholder,
-                    (string)$value,
-                    PDO::PARAM_STR
-                );
-            }
-        }
-
-        $statement->execute();
+        );
 
         $orders =
             $statement->fetchAll(
                 PDO::FETCH_ASSOC
             );
-    }
-
-    if (
-        empty($orders)
-    ) {
-        $fallbackSql =
-            'SELECT * FROM `customer_orders`' .
-            $orderBy .
-            ' LIMIT 500';
-
-        $fallbackStatement =
+    } else {
+        $statement =
             $database->query(
-                $fallbackSql
+                "SELECT *
+                 FROM customer_orders
+                 ORDER BY {$sortColumn} DESC
+                 LIMIT 500"
             );
 
-        $fallbackOrders =
-            $fallbackStatement->fetchAll(
+        $orders =
+            $statement->fetchAll(
                 PDO::FETCH_ASSOC
             );
-
-        foreach (
-            $fallbackOrders
-            as $candidate
-        ) {
-            $details =
-                getOrderDetails(
-                    $candidate
-                );
-
-            if (
-                orderBelongsToCustomer(
-                    $candidate,
-                    $details,
-                    $user
-                )
-            ) {
-                $orders[] =
-                    $candidate;
-            }
-        }
     }
 
     $result = [];
@@ -809,12 +780,12 @@ try {
         as $order
     ) {
         $details =
-            getOrderDetails(
+            decodeOrderDetails(
                 $order
             );
 
         if (
-            !orderBelongsToCustomer(
+            !customerOwnsOrder(
                 $order,
                 $details,
                 $user
@@ -823,19 +794,33 @@ try {
             continue;
         }
 
-        $result[] =
-            normalizeCustomerOrder(
+        $prepared =
+            prepareCustomerOrder(
+                $database,
                 $order
             );
+
+        if (
+            shouldHideCustomerOrder(
+                $prepared
+            )
+        ) {
+            continue;
+        }
+
+        $result[] =
+            $prepared;
     }
 
     echo json_encode(
         [
             'success' => true,
-            'count' => count(
+            'count' =>
+                count(
+                    $result
+                ),
+            'orders' =>
                 $result
-            ),
-            'orders' => $result
         ],
         JSON_UNESCAPED_SLASHES |
         JSON_UNESCAPED_UNICODE
@@ -846,15 +831,11 @@ try {
 ) {
     http_response_code(500);
 
-    echo json_encode(
-        [
-            'success' => false,
-            'message' =>
-                'Unable to load customer orders.',
-            'error' =>
-                $error->getMessage()
-        ],
-        JSON_UNESCAPED_SLASHES |
-        JSON_UNESCAPED_UNICODE
-    );
+    echo json_encode([
+        'success' => false,
+        'message' =>
+            'Unable to load customer orders.',
+        'error' =>
+            $error->getMessage()
+    ]);
 }
