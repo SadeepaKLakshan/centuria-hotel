@@ -10,1431 +10,912 @@ applyCors();
 
 header('Content-Type: application/json; charset=utf-8');
 
-function orderResponse(
-    int $status,
-    array $payload
-): never {
-    http_response_code($status);
+if (($_SERVER['REQUEST_METHOD'] ?? '') === 'OPTIONS') {
+    http_response_code(204);
+    exit;
+}
 
-    echo json_encode(
-        $payload,
-        JSON_UNESCAPED_SLASHES |
-        JSON_UNESCAPED_UNICODE
-    );
+if (($_SERVER['REQUEST_METHOD'] ?? '') !== 'POST') {
+    http_response_code(405);
+
+    echo json_encode([
+        'success' => false,
+        'message' => 'Method not allowed.'
+    ]);
 
     exit;
 }
 
-function getJsonInput(): array
+function createOrderDatabase(): PDO
 {
-    $raw =
-        file_get_contents(
-            'php://input'
-        );
+    global $pdo;
 
-    if (
-        $raw === false ||
-        trim($raw) === ''
-    ) {
-        return [];
+    if (isset($pdo) && $pdo instanceof PDO) {
+        return $pdo;
     }
 
-    $decoded =
-        json_decode(
-            $raw,
-            true
-        );
+    if (function_exists('getDatabaseConnection')) {
+        $database = getDatabaseConnection();
 
-    if (
-        !is_array(
-            $decoded
-        )
-    ) {
-        orderResponse(
-            400,
-            [
-                'success' => false,
-                'message' =>
-                    'Invalid JSON request.'
-            ]
-        );
+        if ($database instanceof PDO) {
+            return $database;
+        }
     }
 
-    return $decoded;
-}
-
-function tableExists(
-    PDO $pdo,
-    string $table
-): bool {
-    $statement =
-        $pdo->prepare(
-            'SELECT COUNT(*)
-             FROM information_schema.tables
-             WHERE table_schema = DATABASE()
-             AND table_name = :table_name'
-        );
-
-    $statement->execute([
-        'table_name' =>
-            $table
-    ]);
-
-    return (
-        (int)$statement->fetchColumn() >
-        0
+    throw new RuntimeException(
+        'Database connection is unavailable.'
     );
 }
 
-function getTableColumns(
+function createOrderColumns(
     PDO $pdo,
     string $table
 ): array {
-    $statement =
-        $pdo->query(
-            "SHOW COLUMNS FROM `$table`"
-        );
+    $statement = $pdo->query(
+        "SHOW COLUMNS FROM `{$table}`"
+    );
 
     $columns = [];
 
-    while (
-        $row =
-            $statement->fetch(
-                PDO::FETCH_ASSOC
-            )
+    foreach (
+        $statement->fetchAll(PDO::FETCH_ASSOC)
+        as $column
     ) {
-        $columns[
-            $row['Field']
-        ] = $row;
+        $columns[$column['Field']] = $column;
     }
 
     return $columns;
 }
 
-function firstExistingColumn(
-    array $columns,
-    array $candidates
-): ?string {
-    foreach (
-        $candidates
-        as $candidate
-    ) {
-        if (
-            isset(
-                $columns[
-                    $candidate
-                ]
-            )
-        ) {
-            return $candidate;
-        }
-    }
+function createOrderTableExists(
+    PDO $pdo,
+    string $table
+): bool {
+    $statement = $pdo->prepare(
+        'SELECT COUNT(*)
+         FROM information_schema.tables
+         WHERE table_schema = DATABASE()
+         AND table_name = :table'
+    );
 
-    return null;
+    $statement->execute([
+        'table' => $table
+    ]);
+
+    return (int)$statement->fetchColumn() > 0;
 }
 
-function setColumnValue(
-    array &$values,
-    array $columns,
-    array $candidates,
-    mixed $value
-): void {
-    $column =
-        firstExistingColumn(
-            $columns,
-            $candidates
-        );
+function ensureOrderSchema(PDO $pdo): void
+{
+    $columns = createOrderColumns(
+        $pdo,
+        'customer_orders'
+    );
 
     if (
-        $column !== null
-    ) {
-        $values[
-            $column
-        ] = $value;
-    }
-}
-
-function getEnumFirstValue(
-    string $type
-): ?string {
-    if (
-        !preg_match(
-            "/^enum\\((.*)\\)$/i",
-            $type,
-            $matches
-        )
-    ) {
-        return null;
-    }
-
-    if (
-        !preg_match_all(
-            "/'([^']*)'/",
-            $matches[1],
-            $values
-        )
-    ) {
-        return null;
-    }
-
-    return $values[1][0] ??
-        null;
-}
-
-function getRequiredFallback(
-    string $column,
-    array $definition
-): mixed {
-    $type =
-        strtolower(
-            (string)(
-                $definition[
-                    'Type'
-                ] ??
-                ''
-            )
-        );
-
-    $columnLower =
-        strtolower(
-            $column
-        );
-
-    if (
-        str_contains(
-            $columnLower,
-            'status'
-        )
-    ) {
-        if (
-            str_contains(
-                $columnLower,
-                'payment'
-            )
-        ) {
-            return 'pending';
-        }
-
-        return 'pending';
-    }
-
-    if (
-        str_contains(
-            $columnLower,
-            'currency'
-        )
-    ) {
-        return 'LKR';
-    }
-
-    if (
-        str_contains(
-            $columnLower,
-            'email'
-        )
-    ) {
-        return '';
-    }
-
-    if (
-        str_contains(
-            $columnLower,
-            'phone'
-        )
-    ) {
-        return '';
-    }
-
-    if (
-        str_contains(
-            $columnLower,
-            'name'
-        ) ||
-        str_contains(
-            $columnLower,
-            'title'
-        )
-    ) {
-        return 'Centuria Booking';
-    }
-
-    if (
-        str_contains(
-            $columnLower,
-            'description'
-        ) ||
-        str_contains(
-            $columnLower,
-            'notes'
-        ) ||
-        str_contains(
-            $columnLower,
-            'detail'
-        )
-    ) {
-        return '';
-    }
-
-    if (
-        str_contains(
-            $columnLower,
-            'date'
-        )
-    ) {
-        return date(
-            'Y-m-d'
-        );
-    }
-
-    if (
-        str_contains(
-            $columnLower,
-            'time'
-        )
-    ) {
-        return date(
-            'H:i:s'
-        );
-    }
-
-    if (
-        str_contains(
-            $type,
-            'datetime'
-        ) ||
-        str_contains(
-            $type,
-            'timestamp'
-        )
-    ) {
-        return date(
-            'Y-m-d H:i:s'
-        );
-    }
-
-    if (
-        preg_match(
-            '/^(tinyint|smallint|mediumint|int|bigint)/',
-            $type
-        )
-    ) {
-        return 0;
-    }
-
-    if (
-        preg_match(
-            '/^(decimal|float|double)/',
-            $type
-        )
-    ) {
-        return 0;
-    }
-
-    if (
+        isset($columns['status']) &&
         str_starts_with(
-            $type,
+            strtolower(
+                (string)$columns['status']['Type']
+            ),
             'enum('
         )
     ) {
-        return
-            getEnumFirstValue(
-                $type
-            ) ??
-            '';
+        $pdo->exec(
+            "ALTER TABLE customer_orders
+             MODIFY COLUMN status
+             VARCHAR(40)
+             NOT NULL
+             DEFAULT 'pending'"
+        );
     }
 
-    return '';
-}
-
-function completeRequiredColumns(
-    array $columns,
-    array $values
-): array {
-    foreach (
-        $columns
-        as $name =>
-            $definition
-    ) {
-        if (
-            array_key_exists(
-                $name,
-                $values
-            )
-        ) {
-            continue;
-        }
-
-        $extra =
-            strtolower(
-                (string)(
-                    $definition[
-                        'Extra'
-                    ] ??
-                    ''
-                )
-            );
-
-        if (
-            str_contains(
-                $extra,
-                'auto_increment'
-            )
-        ) {
-            continue;
-        }
-
-        if (
-            in_array(
-                $name,
-                [
-                    'created_at',
-                    'updated_at'
-                ],
-                true
-            )
-        ) {
-            continue;
-        }
-
-        $nullable =
-            strtoupper(
-                (string)(
-                    $definition[
-                        'Null'
-                    ] ??
-                    'YES'
-                )
-            ) ===
-            'YES';
-
-        $defaultExists =
-            array_key_exists(
-                'Default',
-                $definition
-            ) &&
-            $definition[
-                'Default'
-            ] !==
-            null;
-
-        if (
-            !$nullable &&
-            !$defaultExists
-        ) {
-            $values[
-                $name
-            ] =
-                getRequiredFallback(
-                    $name,
-                    $definition
-                );
-        }
-    }
-
-    return $values;
-}
-
-function generateOrderNumber(): string
-{
-    return sprintf(
-        'CENT-%s-%04d',
-        date(
-            'YmdHis'
-        ),
-        random_int(
-            1000,
-            9999
-        )
+    $columns = createOrderColumns(
+        $pdo,
+        'customer_orders'
     );
+
+    $required = [
+        'image' =>
+            'VARCHAR(2048) NULL',
+
+        'details_json' =>
+            'LONGTEXT NULL',
+
+        'status_updated_at' =>
+            'DATETIME NULL',
+
+        'cancel_previous_status' =>
+            'VARCHAR(40) NULL',
+
+        'cancel_reason' =>
+            'VARCHAR(500) NULL',
+
+        'cancel_requested_at' =>
+            'DATETIME NULL'
+    ];
+
+    foreach (
+        $required as
+        $column => $definition
+    ) {
+        if (!isset($columns[$column])) {
+            $pdo->exec(
+                "ALTER TABLE customer_orders
+                 ADD COLUMN `{$column}`
+                 {$definition}"
+            );
+        }
+    }
 }
 
-function normalizeOrderType(
+function normalizeOrderTypeValue(
     string $value
 ): string {
-    $value =
-        strtolower(
-            trim(
-                $value
-            )
-        );
+    $value = strtolower(
+        trim($value)
+    );
 
     if (
-        str_contains(
-            $value,
-            'food'
-        ) ||
-        str_contains(
-            $value,
-            'dining'
-        )
+        str_contains($value, 'food') ||
+        str_contains($value, 'dining') ||
+        str_contains($value, 'restaurant')
     ) {
-        return 'dining';
+        return 'food';
     }
 
     if (
-        str_contains(
-            $value,
-            'room'
-        )
+        str_contains($value, 'room') ||
+        str_contains($value, 'stay')
     ) {
         return 'room';
     }
 
     if (
-        str_contains(
-            $value,
-            'tour'
-        ) ||
-        str_contains(
-            $value,
-            'travel'
-        )
+        str_contains($value, 'tour') ||
+        str_contains($value, 'travel') ||
+        str_contains($value, 'transport')
     ) {
         return 'tour';
     }
 
     if (
-        str_contains(
-            $value,
-            'spa'
-        ) ||
-        str_contains(
-            $value,
-            'massage'
-        )
+        str_contains($value, 'spa') ||
+        str_contains($value, 'massage') ||
+        str_contains($value, 'wellness')
     ) {
         return 'spa';
     }
 
-    return
-        $value !== ''
-            ? $value
-            : 'service';
+    return 'food';
 }
 
-function insertDynamicRow(
-    PDO $pdo,
-    string $table,
-    array $values
-): int {
-    if (
-        count(
-            $values
-        ) === 0
-    ) {
-        throw new RuntimeException(
-            'No insertable values were found.'
-        );
-    }
-
-    $columnNames =
-        array_keys(
-            $values
-        );
-
-    $quotedColumns =
-        array_map(
-            static fn(
-                string $column
-            ): string =>
-                "`{$column}`",
-            $columnNames
-        );
-
-    $placeholders =
-        array_map(
-            static fn(
-                string $column
-            ): string =>
-                ':' .
-                $column,
-            $columnNames
-        );
-
-    $sql =
-        "INSERT INTO `$table` (" .
-        implode(
-            ', ',
-            $quotedColumns
-        ) .
-        ') VALUES (' .
-        implode(
-            ', ',
-            $placeholders
-        ) .
-        ')';
-
-    $statement =
-        $pdo->prepare(
-            $sql
-        );
-
-    $statement->execute(
-        $values
+function spaImageFromTitle(
+    string $title
+): string {
+    $title = strtolower(
+        trim($title)
     );
 
-    return
-        (int)$pdo->lastInsertId();
+    $images = [
+        'aromatherapy massage' =>
+            '/spa/spa-aroma-massage.jpg',
+
+        'herbal wellness therapy' =>
+            '/spa/spa-herbal-therapy.jpg',
+
+        'luxury facial ritual' =>
+            '/spa/spa-facial-ritual.jpg',
+
+        'hot stone therapy' =>
+            '/spa/spa-hot-stone.jpg',
+
+        'centuria signature spa' =>
+            '/spa/spa-signature-wellness.jpg',
+
+        'couple serenity retreat' =>
+            '/spa/spa-couple-serenity-retreat.jpg',
+
+        'luxury body renewal package' =>
+            '/spa/spa-luxury-body-renewal-package.jpg',
+
+        'royal wellness escape' =>
+            '/spa/spa-royal-wellness-escape.jpg'
+    ];
+
+    return $images[$title] ?? '';
 }
 
-try {
-    if (
-        $_SERVER[
-            'REQUEST_METHOD'
-        ] !==
-        'POST'
-    ) {
-        orderResponse(
-            405,
-            [
-                'success' => false,
-                'message' =>
-                    'Method not allowed.'
-            ]
+function resolveStoredOrderImage(
+    string $type,
+    string $title,
+    string $image
+): string {
+    if ($type === 'spa') {
+        $spaImage = spaImageFromTitle(
+            $title
         );
+
+        if ($spaImage !== '') {
+            return $spaImage;
+        }
     }
 
-    $customer =
-        requireCustomer();
+    return trim($image);
+}
 
-    $pdo =
-        getDatabaseConnection();
-
-    $input =
-        getJsonInput();
-
-    if (
-        !tableExists(
-            $pdo,
-            'customer_orders'
-        )
-    ) {
-        orderResponse(
-            500,
-            [
-                'success' => false,
-                'message' =>
-                    'The customer_orders table does not exist.',
-                'error' =>
-                    'Missing customer_orders table.'
-            ]
-        );
-    }
-
-    $orderType =
-        normalizeOrderType(
-            (string)(
-                $input[
-                    'order_type'
-                ] ??
-                $input[
-                    'service_type'
-                ] ??
-                $input[
-                    'type'
-                ] ??
-                'service'
-            )
-        );
-
-    $title =
-        trim(
-            (string)(
-                $input[
-                    'title'
-                ] ??
-                $input[
-                    'name'
-                ] ??
-                $input[
-                    'service_name'
-                ] ??
-                'Centuria Booking'
-            )
-        );
-
-    if (
-        $title === ''
-    ) {
-        $title =
-            'Centuria Booking';
-    }
-
-    $description =
-        trim(
-            (string)(
-                $input[
-                    'description'
-                ] ??
-                $input[
-                    'notes'
-                ] ??
-                ''
-            )
-        );
-
-    $amount =
-        (float)(
-            $input[
-                'total_amount'
-            ] ??
-            $input[
-                'amount'
-            ] ??
-            $input[
-                'total'
-            ] ??
-            0
-        );
-
-    if (
-        !is_finite(
-            $amount
-        ) ||
-        $amount <= 0
-    ) {
-        orderResponse(
-            422,
-            [
-                'success' => false,
-                'message' =>
-                    'A valid booking amount is required.',
-                'error' =>
-                    'Invalid total_amount.'
-            ]
-        );
-    }
-
-    $currency =
+function generateOrderNumber(): string
+{
+    return
+        'CENT-' .
+        date('YmdHis') .
+        '-' .
         strtoupper(
-            trim(
-                (string)(
-                    $input[
-                        'currency'
-                    ] ??
-                    'LKR'
-                )
+            substr(
+                bin2hex(
+                    random_bytes(4)
+                ),
+                0,
+                6
             )
         );
+}
 
-    if (
-        $currency === ''
-    ) {
-        $currency =
-            'LKR';
+function addCreateOrderValue(
+    array &$fields,
+    array &$placeholders,
+    array &$params,
+    array $columns,
+    string $column,
+    mixed $value
+): void {
+    if (!isset($columns[$column])) {
+        return;
     }
 
-    $paymentMethod =
-        trim(
-            (string)(
-                $input[
-                    'payment_method'
-                ] ??
-                'Card'
-            )
-        );
-
-    $paymentReference =
-        trim(
-            (string)(
-                $input[
-                    'payment_reference'
-                ] ??
-                ''
-            )
-        );
-
-    if (
-        $paymentReference ===
-        ''
-    ) {
-        $paymentReference =
-            'PAY-' .
-            date(
-                'YmdHis'
-            ) .
-            '-' .
-            random_int(
-                100000,
-                999999
-            );
-    }
-
-    $paymentLast4 =
+    $parameter =
+        'p_' .
         preg_replace(
-            '/[^0-9]/',
-            '',
-            (string)(
-                $input[
-                    'payment_last4'
-                ] ??
-                ''
-            )
+            '/[^A-Za-z0-9_]/',
+            '_',
+            $column
         );
 
-    $paymentLast4 =
-        substr(
-            $paymentLast4,
-            -4
-        );
+    $fields[] =
+        "`{$column}`";
 
-    $details =
-        $input[
-            'details'
-        ] ??
-        [];
+    $placeholders[] =
+        ':' . $parameter;
 
+    $params[$parameter] =
+        $value;
+}
+
+function addOrderHistory(
+    PDO $pdo,
+    int $orderId
+): void {
     if (
-        !is_array(
-            $details
-        )
-    ) {
-        $details = [];
-    }
-
-    $detailsJson =
-        json_encode(
-            $details,
-            JSON_UNESCAPED_SLASHES |
-            JSON_UNESCAPED_UNICODE
-        );
-
-    if (
-        $detailsJson ===
-        false
-    ) {
-        $detailsJson =
-            '{}';
-    }
-
-    $customerStatement =
-        $pdo->prepare(
-            'SELECT
-                id,
-                full_name,
-                email,
-                phone,
-                country_code,
-                country
-             FROM users
-             WHERE id = :id
-             LIMIT 1'
-        );
-
-    $customerStatement->execute([
-        'id' =>
-            (int)$customer[
-                'id'
-            ]
-    ]);
-
-    $customerRow =
-        $customerStatement->fetch(
-            PDO::FETCH_ASSOC
-        );
-
-    if (
-        !$customerRow
-    ) {
-        orderResponse(
-            404,
-            [
-                'success' => false,
-                'message' =>
-                    'Customer account was not found.',
-                'error' =>
-                    'Authenticated user does not exist.'
-            ]
-        );
-    }
-
-    $orderNumber =
-        generateOrderNumber();
-
-    $columns =
-        getTableColumns(
-            $pdo,
-            'customer_orders'
-        );
-
-    $values = [];
-
-    setColumnValue(
-        $values,
-        $columns,
-        [
-            'user_id',
-            'customer_id'
-        ],
-        (int)$customerRow[
-            'id'
-        ]
-    );
-
-    setColumnValue(
-        $values,
-        $columns,
-        [
-            'order_number',
-            'booking_number',
-            'reference_number'
-        ],
-        $orderNumber
-    );
-
-    setColumnValue(
-        $values,
-        $columns,
-        [
-            'customer_name',
-            'full_name',
-            'name'
-        ],
-        (string)(
-            $customerRow[
-                'full_name'
-            ] ??
-            'Customer'
-        )
-    );
-
-    setColumnValue(
-        $values,
-        $columns,
-        [
-            'customer_email',
-            'email'
-        ],
-        (string)(
-            $customerRow[
-                'email'
-            ] ??
-            ''
-        )
-    );
-
-    setColumnValue(
-        $values,
-        $columns,
-        [
-            'customer_phone',
-            'phone'
-        ],
-        (string)(
-            $customerRow[
-                'phone'
-            ] ??
-            ''
-        )
-    );
-
-    setColumnValue(
-        $values,
-        $columns,
-        [
-            'country'
-        ],
-        (string)(
-            $customerRow[
-                'country'
-            ] ??
-            'Sri Lanka'
-        )
-    );
-
-    setColumnValue(
-        $values,
-        $columns,
-        [
-            'order_type',
-            'service_type',
-            'type'
-        ],
-        $orderType
-    );
-
-    setColumnValue(
-        $values,
-        $columns,
-        [
-            'title',
-            'order_title',
-            'service_name',
-            'item_name'
-        ],
-        $title
-    );
-
-    setColumnValue(
-        $values,
-        $columns,
-        [
-            'description',
-            'notes',
-            'special_request'
-        ],
-        $description
-    );
-
-    setColumnValue(
-        $values,
-        $columns,
-        [
-            'total_amount',
-            'amount',
-            'total'
-        ],
-        $amount
-    );
-
-    setColumnValue(
-        $values,
-        $columns,
-        [
-            'currency'
-        ],
-        $currency
-    );
-
-    setColumnValue(
-        $values,
-        $columns,
-        [
-            'status',
-            'order_status',
-            'booking_status'
-        ],
-        'pending'
-    );
-
-    setColumnValue(
-        $values,
-        $columns,
-        [
-            'payment_status'
-        ],
-        'pending'
-    );
-
-    setColumnValue(
-        $values,
-        $columns,
-        [
-            'payment_method'
-        ],
-        $paymentMethod
-    );
-
-    setColumnValue(
-        $values,
-        $columns,
-        [
-            'payment_reference',
-            'transaction_reference'
-        ],
-        $paymentReference
-    );
-
-    setColumnValue(
-        $values,
-        $columns,
-        [
-            'payment_last4',
-            'card_last4'
-        ],
-        $paymentLast4
-    );
-
-    setColumnValue(
-        $values,
-        $columns,
-        [
-            'details_json',
-            'details',
-            'metadata',
-            'order_details'
-        ],
-        $detailsJson
-    );
-
-    $bookingDate =
-        trim(
-            (string)(
-                $details[
-                    'date'
-                ] ??
-                $details[
-                    'bookingDate'
-                ] ??
-                $details[
-                    'booking_date'
-                ] ??
-                ''
-            )
-        );
-
-    $bookingTime =
-        trim(
-            (string)(
-                $details[
-                    'time'
-                ] ??
-                $details[
-                    'bookingTime'
-                ] ??
-                $details[
-                    'booking_time'
-                ] ??
-                ''
-            )
-        );
-
-    setColumnValue(
-        $values,
-        $columns,
-        [
-            'booking_date',
-            'service_date'
-        ],
-        $bookingDate !== ''
-            ? $bookingDate
-            : date(
-                'Y-m-d'
-            )
-    );
-
-    setColumnValue(
-        $values,
-        $columns,
-        [
-            'booking_time',
-            'service_time'
-        ],
-        $bookingTime !== ''
-            ? $bookingTime
-            : date(
-                'H:i:s'
-            )
-    );
-
-    setColumnValue(
-        $values,
-        $columns,
-        [
-            'quantity',
-            'sessions',
-            'guests'
-        ],
-        max(
-            1,
-            (int)(
-                $details[
-                    'quantity'
-                ] ??
-                $details[
-                    'sessions'
-                ] ??
-                1
-            )
-        )
-    );
-
-    $values =
-        completeRequiredColumns(
-            $columns,
-            $values
-        );
-
-    $pdo->beginTransaction();
-
-    $orderId =
-        insertDynamicRow(
-            $pdo,
-            'customer_orders',
-            $values
-        );
-
-    if (
-        $orderId <= 0
-    ) {
-        throw new RuntimeException(
-            'The order ID was not generated.'
-        );
-    }
-
-    if (
-        tableExists(
+        !createOrderTableExists(
             $pdo,
             'order_status_history'
         )
     ) {
-        try {
-            $historyColumns =
-                getTableColumns(
-                    $pdo,
-                    'order_status_history'
-                );
+        return;
+    }
 
-            $historyValues = [];
+    try {
+        $columns = createOrderColumns(
+            $pdo,
+            'order_status_history'
+        );
 
-            setColumnValue(
-                $historyValues,
-                $historyColumns,
-                [
-                    'order_id',
-                    'customer_order_id'
-                ],
-                $orderId
-            );
-
-            setColumnValue(
-                $historyValues,
-                $historyColumns,
-                [
-                    'status',
-                    'new_status'
-                ],
-                'pending'
-            );
-
-            setColumnValue(
-                $historyValues,
-                $historyColumns,
-                [
-                    'previous_status',
-                    'old_status'
-                ],
-                null
-            );
-
-            setColumnValue(
-                $historyValues,
-                $historyColumns,
-                [
-                    'changed_by',
-                    'user_id',
-                    'customer_id'
-                ],
-                (int)$customerRow[
-                    'id'
-                ]
-            );
-
-            setColumnValue(
-                $historyValues,
-                $historyColumns,
-                [
-                    'note',
-                    'notes',
-                    'description'
-                ],
-                'Booking submitted by customer.'
-            );
-
-            $historyValues =
-                completeRequiredColumns(
-                    $historyColumns,
-                    $historyValues
-                );
-
-            if (
-                count(
-                    $historyValues
-                ) >
-                0
-            ) {
-                insertDynamicRow(
-                    $pdo,
-                    'order_status_history',
-                    $historyValues
-                );
-            }
-        } catch (
-            Throwable $historyError
+        if (
+            !isset($columns['order_id']) ||
+            !isset($columns['status'])
         ) {
+            return;
         }
+
+        $fields = [
+            '`order_id`',
+            '`status`'
+        ];
+
+        $values = [
+            ':order_id',
+            ':status'
+        ];
+
+        $params = [
+            'order_id' =>
+                $orderId,
+
+            'status' =>
+                'pending'
+        ];
+
+        if (isset($columns['note'])) {
+            $fields[] = '`note`';
+            $values[] = ':note';
+
+            $params['note'] =
+                'Customer created the booking.';
+        }
+
+        if (isset($columns['created_at'])) {
+            $fields[] = '`created_at`';
+            $values[] = 'NOW()';
+        }
+
+        $statement = $pdo->prepare(
+            'INSERT INTO order_status_history (' .
+            implode(', ', $fields) .
+            ') VALUES (' .
+            implode(', ', $values) .
+            ')'
+        );
+
+        $statement->execute(
+            $params
+        );
+
+    } catch (Throwable $error) {
+    }
+}
+
+try {
+    $user = requireCustomer();
+
+    $pdo = createOrderDatabase();
+
+    $pdo->setAttribute(
+        PDO::ATTR_ERRMODE,
+        PDO::ERRMODE_EXCEPTION
+    );
+
+    if (
+        !createOrderTableExists(
+            $pdo,
+            'customer_orders'
+        )
+    ) {
+        throw new RuntimeException(
+            'customer_orders table does not exist.'
+        );
+    }
+
+    ensureOrderSchema(
+        $pdo
+    );
+
+    $columns = createOrderColumns(
+        $pdo,
+        'customer_orders'
+    );
+
+    $input = json_decode(
+        file_get_contents(
+            'php://input'
+        ),
+        true
+    );
+
+    if (!is_array($input)) {
+        $input = [];
+    }
+
+    $details =
+        isset($input['details']) &&
+        is_array($input['details'])
+            ? $input['details']
+            : [];
+
+    $type = normalizeOrderTypeValue(
+        (string)(
+            $input['order_type'] ??
+            $input['service_type'] ??
+            $details['type'] ??
+            $details['service_type'] ??
+            ''
+        )
+    );
+
+    $serviceType = strtolower(
+        trim(
+            (string)(
+                $input['service_type'] ??
+                $details['service_type'] ??
+                $type
+            )
+        )
+    );
+
+    $title = trim(
+        (string)(
+            $input['title'] ??
+            $details['title'] ??
+            $details['name'] ??
+            'Centuria Booking'
+        )
+    );
+
+    $description = trim(
+        (string)(
+            $input['description'] ??
+            $details['description'] ??
+            ''
+        )
+    );
+
+    $amount = (float)(
+        $input['total_amount'] ??
+        $input['amount'] ??
+        $details['total_amount'] ??
+        $details['total'] ??
+        0
+    );
+
+    if ($amount <= 0) {
+        http_response_code(422);
+
+        echo json_encode([
+            'success' => false,
+            'message' =>
+                'The order amount is invalid.'
+        ]);
+
+        exit;
+    }
+
+    $incomingImage = trim(
+        (string)(
+            $input['image'] ??
+            $details['image'] ??
+            $details['image_url'] ??
+            $details['imageUrl'] ??
+            ''
+        )
+    );
+
+    $image = resolveStoredOrderImage(
+        $type,
+        $title,
+        $incomingImage
+    );
+
+    $orderNumber =
+        generateOrderNumber();
+
+    $details['type'] =
+        $type;
+
+    $details['service_type'] =
+        $serviceType;
+
+    $details['title'] =
+        $title;
+
+    $details['name'] =
+        $title;
+
+    $details['description'] =
+        $description;
+
+    $details['image'] =
+        $image;
+
+    $details['total'] =
+        $amount;
+
+    $details['total_amount'] =
+        $amount;
+
+    $detailsJson = json_encode(
+        $details,
+        JSON_UNESCAPED_SLASHES |
+        JSON_UNESCAPED_UNICODE
+    );
+
+    if ($detailsJson === false) {
+        throw new RuntimeException(
+            'Unable to encode order details.'
+        );
+    }
+
+    $fields = [];
+    $placeholders = [];
+    $params = [];
+
+    addCreateOrderValue(
+        $fields,
+        $placeholders,
+        $params,
+        $columns,
+        'user_id',
+        (int)$user['id']
+    );
+
+    addCreateOrderValue(
+        $fields,
+        $placeholders,
+        $params,
+        $columns,
+        'customer_id',
+        (int)$user['id']
+    );
+
+    addCreateOrderValue(
+        $fields,
+        $placeholders,
+        $params,
+        $columns,
+        'customer_user_id',
+        (int)$user['id']
+    );
+
+    addCreateOrderValue(
+        $fields,
+        $placeholders,
+        $params,
+        $columns,
+        'order_number',
+        $orderNumber
+    );
+
+    addCreateOrderValue(
+        $fields,
+        $placeholders,
+        $params,
+        $columns,
+        'customer_name',
+        (string)(
+            $user['full_name'] ??
+            'Customer'
+        )
+    );
+
+    addCreateOrderValue(
+        $fields,
+        $placeholders,
+        $params,
+        $columns,
+        'customer_email',
+        (string)(
+            $user['email'] ??
+            ''
+        )
+    );
+
+    addCreateOrderValue(
+        $fields,
+        $placeholders,
+        $params,
+        $columns,
+        'email',
+        (string)(
+            $user['email'] ??
+            ''
+        )
+    );
+
+    addCreateOrderValue(
+        $fields,
+        $placeholders,
+        $params,
+        $columns,
+        'customer_phone',
+        (string)(
+            $user['phone'] ??
+            ''
+        )
+    );
+
+    addCreateOrderValue(
+        $fields,
+        $placeholders,
+        $params,
+        $columns,
+        'order_type',
+        $type
+    );
+
+    addCreateOrderValue(
+        $fields,
+        $placeholders,
+        $params,
+        $columns,
+        'service_type',
+        $serviceType
+    );
+
+    addCreateOrderValue(
+        $fields,
+        $placeholders,
+        $params,
+        $columns,
+        'title',
+        $title
+    );
+
+    addCreateOrderValue(
+        $fields,
+        $placeholders,
+        $params,
+        $columns,
+        'description',
+        $description
+    );
+
+    addCreateOrderValue(
+        $fields,
+        $placeholders,
+        $params,
+        $columns,
+        'total_amount',
+        $amount
+    );
+
+    addCreateOrderValue(
+        $fields,
+        $placeholders,
+        $params,
+        $columns,
+        'amount',
+        $amount
+    );
+
+    addCreateOrderValue(
+        $fields,
+        $placeholders,
+        $params,
+        $columns,
+        'currency',
+        (string)(
+            $input['currency'] ??
+            'LKR'
+        )
+    );
+
+    addCreateOrderValue(
+        $fields,
+        $placeholders,
+        $params,
+        $columns,
+        'status',
+        'pending'
+    );
+
+    addCreateOrderValue(
+        $fields,
+        $placeholders,
+        $params,
+        $columns,
+        'payment_status',
+        (string)(
+            $input['payment_status'] ??
+            'pending'
+        )
+    );
+
+    addCreateOrderValue(
+        $fields,
+        $placeholders,
+        $params,
+        $columns,
+        'payment_method',
+        (string)(
+            $input['payment_method'] ??
+            ''
+        )
+    );
+
+    addCreateOrderValue(
+        $fields,
+        $placeholders,
+        $params,
+        $columns,
+        'payment_reference',
+        (string)(
+            $input['payment_reference'] ??
+            ''
+        )
+    );
+
+    addCreateOrderValue(
+        $fields,
+        $placeholders,
+        $params,
+        $columns,
+        'payment_last4',
+        (string)(
+            $input['payment_last4'] ??
+            ''
+        )
+    );
+
+    addCreateOrderValue(
+        $fields,
+        $placeholders,
+        $params,
+        $columns,
+        'image',
+        $image
+    );
+
+    addCreateOrderValue(
+        $fields,
+        $placeholders,
+        $params,
+        $columns,
+        'details_json',
+        $detailsJson
+    );
+
+    if (
+        isset($columns['details'])
+    ) {
+        addCreateOrderValue(
+            $fields,
+            $placeholders,
+            $params,
+            $columns,
+            'details',
+            $detailsJson
+        );
     }
 
     if (
-        tableExists(
-            $pdo,
-            'admin_notifications'
+        isset(
+            $columns['booking_date']
         )
     ) {
-        try {
-            $notificationColumns =
-                getTableColumns(
-                    $pdo,
-                    'admin_notifications'
-                );
-
-            $notificationValues = [];
-
-            setColumnValue(
-                $notificationValues,
-                $notificationColumns,
-                [
-                    'user_id',
-                    'customer_id'
-                ],
-                (int)$customerRow[
-                    'id'
-                ]
-            );
-
-            setColumnValue(
-                $notificationValues,
-                $notificationColumns,
-                [
-                    'order_id',
-                    'customer_order_id'
-                ],
-                $orderId
-            );
-
-            setColumnValue(
-                $notificationValues,
-                $notificationColumns,
-                [
-                    'title',
-                    'subject'
-                ],
-                'New Customer Booking'
-            );
-
-            setColumnValue(
-                $notificationValues,
-                $notificationColumns,
-                [
-                    'message',
-                    'body',
-                    'description'
-                ],
-                sprintf(
-                    '%s submitted a %s booking for %s.',
-                    (string)(
-                        $customerRow[
-                            'full_name'
-                        ] ??
-                        'Customer'
-                    ),
-                    $orderType,
-                    $title
-                )
-            );
-
-            setColumnValue(
-                $notificationValues,
-                $notificationColumns,
-                [
-                    'type',
-                    'notification_type'
-                ],
-                'order'
-            );
-
-            setColumnValue(
-                $notificationValues,
-                $notificationColumns,
-                [
-                    'is_read',
-                    'read_status'
-                ],
-                0
-            );
-
-            $notificationValues =
-                completeRequiredColumns(
-                    $notificationColumns,
-                    $notificationValues
-                );
-
-            if (
-                count(
-                    $notificationValues
-                ) >
-                0
-            ) {
-                insertDynamicRow(
-                    $pdo,
-                    'admin_notifications',
-                    $notificationValues
-                );
-            }
-        } catch (
-            Throwable $notificationError
-        ) {
-        }
+        addCreateOrderValue(
+            $fields,
+            $placeholders,
+            $params,
+            $columns,
+            'booking_date',
+            $details['booking_date'] ??
+            $details['date'] ??
+            null
+        );
     }
+
+    if (
+        isset(
+            $columns['booking_time']
+        )
+    ) {
+        addCreateOrderValue(
+            $fields,
+            $placeholders,
+            $params,
+            $columns,
+            'booking_time',
+            $details['booking_time'] ??
+            $details['time'] ??
+            null
+        );
+    }
+
+    if (
+        isset(
+            $columns['quantity']
+        )
+    ) {
+        addCreateOrderValue(
+            $fields,
+            $placeholders,
+            $params,
+            $columns,
+            'quantity',
+            max(
+                1,
+                (int)(
+                    $details['quantity'] ??
+                    $details['sessions'] ??
+                    1
+                )
+            )
+        );
+    }
+
+    if (
+        isset(
+            $columns['status_updated_at']
+        )
+    ) {
+        $fields[] =
+            '`status_updated_at`';
+
+        $placeholders[] =
+            'NOW()';
+    }
+
+    if (
+        isset(
+            $columns['created_at']
+        )
+    ) {
+        $fields[] =
+            '`created_at`';
+
+        $placeholders[] =
+            'NOW()';
+    }
+
+    if (
+        isset(
+            $columns['updated_at']
+        )
+    ) {
+        $fields[] =
+            '`updated_at`';
+
+        $placeholders[] =
+            'NOW()';
+    }
+
+    if (empty($fields)) {
+        throw new RuntimeException(
+            'No writable order columns were found.'
+        );
+    }
+
+    $sql =
+        'INSERT INTO customer_orders (' .
+        implode(', ', $fields) .
+        ') VALUES (' .
+        implode(', ', $placeholders) .
+        ')';
+
+    $pdo->beginTransaction();
+
+    $statement = $pdo->prepare(
+        $sql
+    );
+
+    $statement->execute(
+        $params
+    );
+
+    $orderId =
+        (int)$pdo->lastInsertId();
+
+    addOrderHistory(
+        $pdo,
+        $orderId
+    );
 
     $pdo->commit();
 
-    $order = [
-        'id' =>
-            $orderId,
+    $result = $pdo->prepare(
+        'SELECT *
+         FROM customer_orders
+         WHERE id = :id
+         LIMIT 1'
+    );
 
-        'order_number' =>
-            $orderNumber,
+    $result->execute([
+        'id' => $orderId
+    ]);
 
-        'user_id' =>
-            (int)$customerRow[
-                'id'
-            ],
+    $order = $result->fetch(
+        PDO::FETCH_ASSOC
+    );
 
-        'customer_name' =>
-            $customerRow[
-                'full_name'
-            ],
+    if ($order) {
+        $order['details'] =
+            $details;
 
-        'customer_email' =>
-            $customerRow[
-                'email'
-            ],
+        $order['image'] =
+            $image;
+    }
 
-        'order_type' =>
-            $orderType,
-
-        'service_type' =>
-            $orderType,
-
-        'title' =>
-            $title,
-
-        'description' =>
-            $description,
-
-        'total_amount' =>
-            $amount,
-
-        'currency' =>
-            $currency,
-
-        'status' =>
-            'pending',
-
-        'payment_status' =>
-            'pending',
-
-        'payment_method' =>
-            $paymentMethod,
-
-        'payment_reference' =>
-            $paymentReference,
-
-        'payment_last4' =>
-            $paymentLast4,
-
-        'created_at' =>
-            date(
-                'Y-m-d H:i:s'
-            )
-    ];
-
-    orderResponse(
-        201,
+    echo json_encode(
         [
-            'success' =>
-                true,
+            'success' => true,
 
             'message' =>
                 'Booking created successfully.',
@@ -1450,32 +931,33 @@ try {
 
             'order' =>
                 $order
-        ]
+        ],
+        JSON_UNESCAPED_SLASHES |
+        JSON_UNESCAPED_UNICODE
     );
-} catch (
-    Throwable $error
-) {
+
+} catch (Throwable $error) {
     if (
-        isset(
-            $pdo
-        ) &&
+        isset($pdo) &&
         $pdo instanceof PDO &&
         $pdo->inTransaction()
     ) {
         $pdo->rollBack();
     }
 
-    orderResponse(
-        500,
+    http_response_code(500);
+
+    echo json_encode(
         [
-            'success' =>
-                false,
+            'success' => false,
 
             'message' =>
                 'Unable to create the booking.',
 
             'error' =>
                 $error->getMessage()
-        ]
+        ],
+        JSON_UNESCAPED_SLASHES |
+        JSON_UNESCAPED_UNICODE
     );
 }
